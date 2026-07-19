@@ -1,0 +1,26 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Gawain — Ollama Modelfile for fine-tuned model
+#
+# Use AFTER running finetune.bat / finetune.sh
+#
+# Usage:
+#   ollama create gawain-finetuned -f train/Modelfile.finetuned
+#   ollama run gawain-finetuned "Why did sales drop in 2013?"
+#
+# Set in .env:  OLLAMA_MODEL=gawain-finetuned
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Points to the merged fine-tuned GGUF produced by finetune.bat/sh
+FROM ./train/models/gawain-finetuned.gguf
+
+PARAMETER temperature    0.05
+PARAMETER num_ctx        8192
+PARAMETER top_k          40
+PARAMETER top_p          0.9
+PARAMETER repeat_penalty 1.1
+
+SYSTEM """
+You are Gawain, a senior SQL analyst for the AdventureWorksDW2019 data warehouse.
+Return T-SQL queries in ```sql ... ``` blocks only.
+Never use GETDATE() — data ends 2014-01-28.
+"""
