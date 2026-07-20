@@ -2,6 +2,8 @@ import type { HealthStatus } from "../hooks/useHealth";
 
 interface Props {
   status: HealthStatus | null;
+  theme: "light" | "dark";
+  onToggleTheme: () => void;
   onRefreshSchema: () => void;
   onNewChat: () => void;
   onToggleHistory: () => void;
@@ -31,7 +33,7 @@ function BarclaysLogo() {
   );
 }
 
-export function Header({ status, onRefreshSchema, onNewChat, onToggleHistory, onToggleDashboard, onToggleDrivers, driversReady, pinnedCount }: Props) {
+export function Header({ status, theme, onToggleTheme, onRefreshSchema, onNewChat, onToggleHistory, onToggleDashboard, onToggleDrivers, driversReady, pinnedCount }: Props) {
   return (
     <header>
       <BarclaysLogo />
@@ -49,6 +51,9 @@ export function Header({ status, onRefreshSchema, onNewChat, onToggleHistory, on
         ) : (
           <span className="badge loading">Connecting…</span>
         )}
+        <button className="hdr-btn hdr-btn-theme" onClick={onToggleTheme}>
+          {theme === "dark" ? "Light Mode" : "Dark Mode"}
+        </button>
         <button className="hdr-btn" onClick={onRefreshSchema}>Refresh Schema</button>
         <button className="hdr-btn" onClick={onToggleHistory}>History</button>
         <button className="hdr-btn hdr-btn-drivers" onClick={onToggleDrivers}>

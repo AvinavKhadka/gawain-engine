@@ -1,9 +1,10 @@
 /*
- * Gawain — Barclays Design System (Light Theme)
+ * Gawain — Barclays Design System
  * Palette: Barclays Blue #00AEEF · Navy #002B5C · Teal #00A98F
  */
 
-:root {
+:root,
+:root[data-theme="light"] {
   --bg:           #F2F5F9;
   --surface:      #FFFFFF;
   --card:         #FFFFFF;
@@ -36,6 +37,48 @@
   --sql-text:     #005F8E;
   --shadow-sm:    0 1px 4px rgba(0, 43, 92, 0.08);
   --shadow-md:    0 3px 10px rgba(0, 43, 92, 0.12);
+  --shadow-panel: -4px 0 20px rgba(0, 43, 92, 0.12);
+  --overlay-bg:   rgba(0, 43, 92, 0.25);
+  --focus-ring:   0 0 0 3px rgba(0, 174, 239, 0.15);
+}
+
+:root[data-theme="dark"] {
+  --bg:           #0B1220;
+  --surface:      #101A2C;
+  --card:         #132036;
+  --card-2:       #16253E;
+  --border:       #27415F;
+  --border-2:     #3A5D82;
+
+  --blue:         #4AB6F0;
+  --blue-dark:    #2F9AD1;
+  --blue-hover:   #67C4F5;
+  --blue-dim:     #102A43;
+  --blue-text:    #8FD4FF;
+
+  --navy:         #E6F1FF;
+  --teal:         #47D7C5;
+  --teal-dark:    #28BFAE;
+
+  --user-bg:      #122B43;
+  --user-text:    #E6F4FF;
+  --user-border:  #2C4D69;
+
+  --txt-1:        #EAF2FF;
+  --txt-2:        #B2C7E0;
+  --txt-3:        #8299B3;
+
+  --ok-bg:        #123B35;  --ok-txt:   #63E0C6;
+  --err-bg:       #3A1820;  --err-txt:  #FF8FA3;
+  --load-bg:      #0F334D;  --load-txt: #78C7F5;
+
+  --sql-text:     #9DD7FF;
+  --shadow-sm:    0 1px 4px rgba(0, 0, 0, 0.28);
+  --shadow-md:    0 8px 22px rgba(0, 0, 0, 0.32);
+  --shadow-panel: -4px 0 20px rgba(0, 0, 0, 0.32);
+  --overlay-bg:   rgba(2, 8, 23, 0.72);
+  --focus-ring:   0 0 0 3px rgba(74, 182, 240, 0.22);
+  color-scheme: dark;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -47,6 +90,10 @@ body, #root {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
+}
+
+body {
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 .app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
@@ -95,6 +142,7 @@ header {
 .hdr-btn:hover {
   border-color: var(--blue); color: var(--blue); background: var(--blue-dim);
 }
+.hdr-btn-theme { white-space: nowrap; }
 
 /* ── Messages pane ───────────────────────────────────────────────────── */
 .messages {
@@ -359,7 +407,7 @@ header {
 }
 .input-area textarea:focus {
   border-color: var(--blue);
-  box-shadow: 0 0 0 3px rgba(0, 174, 239, 0.15);
+  box-shadow: var(--focus-ring);
 }
 .input-area textarea::placeholder { color: var(--txt-3); }
 .input-area textarea:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -446,7 +494,7 @@ header {
 /* ── Panel overlay (shared by History + Dashboard) ───────────────────── */
 .panel-overlay {
   position: fixed; inset: 0;
-  background: rgba(0, 43, 92, 0.25);
+  background: var(--overlay-bg);
   z-index: 100;
   display: flex; justify-content: flex-end;
   animation: fadeIn 0.15s ease;
@@ -479,7 +527,7 @@ header {
 .history-panel {
   width: 400px; height: 100%;
   background: var(--surface); display: flex; flex-direction: column;
-  box-shadow: -4px 0 20px rgba(0, 43, 92, 0.12);
+  box-shadow: var(--shadow-panel);
   overflow-y: auto;
   animation: slideInRight 0.2s ease;
 }
@@ -518,7 +566,7 @@ header {
 .driver-panel {
   width: 420px; height: 100%;
   background: var(--surface); display: flex; flex-direction: column;
-  box-shadow: -4px 0 20px rgba(0, 43, 92, 0.12);
+  box-shadow: var(--shadow-panel);
   animation: slideInRight 0.2s ease;
 }
 .driver-body { flex: 1; overflow-y: auto; padding-bottom: 12px; }
@@ -579,9 +627,52 @@ header {
 .dashboard-panel {
   width: min(860px, 95vw); height: 100%;
   background: var(--surface); display: flex; flex-direction: column;
-  box-shadow: -4px 0 20px rgba(0, 43, 92, 0.12);
+  box-shadow: var(--shadow-panel);
   overflow-y: auto;
   animation: slideInRight 0.2s ease;
+}
+
+:root[data-theme="dark"] .user .avatar,
+:root[data-theme="dark"] .assistant .avatar,
+:root[data-theme="dark"] .send-btn,
+:root[data-theme="dark"] .driver-rebuild-btn,
+:root[data-theme="dark"] .sql-run-btn {
+  color: #F8FBFF;
+}
+
+:root[data-theme="dark"] .ag-theme-quartz {
+  --ag-background-color:          #132036 !important;
+  --ag-odd-row-background-color:  #102033 !important;
+  --ag-header-background-color:   #17263D !important;
+  --ag-border-color:              #27415F !important;
+  --ag-header-foreground-color:   #EAF2FF !important;
+  --ag-foreground-color:          #EAF2FF !important;
+  --ag-selected-row-background-color: #16314B !important;
+  --ag-row-hover-color:           #18324E !important;
+}
+
+:root[data-theme="dark"] .panel-header,
+:root[data-theme="dark"] .grid-header-bar,
+:root[data-theme="dark"] .dashboard-item-header {
+  background: var(--card-2);
+}
+
+:root[data-theme="dark"] .chip:hover,
+:root[data-theme="dark"] .grid-action-btn:hover,
+:root[data-theme="dark"] .sql-edit-btn:hover,
+:root[data-theme="dark"] .panel-close:hover,
+:root[data-theme="dark"] .history-row:hover {
+  background: var(--blue-dim);
+}
+
+:root[data-theme="dark"] .hdr-btn-dashboard:hover,
+:root[data-theme="dark"] .hdr-btn-new:hover,
+:root[data-theme="dark"] .train-btn:hover:not(:disabled) {
+  background: var(--blue-dim);
+}
+
+:root[data-theme="dark"] .driver-dot.on {
+  box-shadow: 0 0 0 2px rgba(71, 215, 197, 0.2);
 }
 .dashboard-empty { line-height: 1.8; }
 .dashboard-grid {

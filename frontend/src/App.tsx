@@ -20,6 +20,9 @@ const WELCOME_BLOCKS: Block[] = [
 ];
 
 const PINNED_STORAGE_KEY = "gawain_pinned_v1";
+const THEME_STORAGE_KEY = "gawain_theme_v1";
+
+type Theme = "light" | "dark";
 
 function loadPinned(): PinnedItem[] {
   try {
@@ -27,6 +30,16 @@ function loadPinned(): PinnedItem[] {
   } catch {
     return [];
   }
+}
+
+function loadTheme(): Theme {
+  try {
+    const stored = localStorage.getItem(THEME_STORAGE_KEY);
+    if (stored === "light" || stored === "dark") return stored;
+  } catch {
+    // Ignore storage failures and fall back to the default theme.
+  }
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
 export default function App() {
@@ -40,11 +53,18 @@ export default function App() {
   const bottomRef    = useRef<HTMLDivElement>(null);
   const isAtBottom   = useRef(true);
 
+  const [theme, setTheme] = useState<Theme>(loadTheme);
   const [suggestionsVisible, setSuggestionsVisible] = useState(true);
   const [showHistory,   setShowHistory]   = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
   const [showDrivers,   setShowDrivers]   = useState(false);
   const [pinned, setPinned] = useState<PinnedItem[]>(loadPinned);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.style.colorScheme = theme;
+    localStorage.setItem(THEME_STORAGE_KEY, theme);
+  }, [theme]);
 
   // Track whether the user has scrolled away from the bottom
   useEffect(() => {
@@ -125,6 +145,8 @@ export default function App() {
     <div className="app">
       <Header
         status={status}
+        theme={theme}
+        onToggleTheme={() => setTheme((current) => current === "dark" ? "light" : "dark")}
         onRefreshSchema={refreshSchema}
         onNewChat={handleNewChat}
         onToggleHistory={toggleHistory}
