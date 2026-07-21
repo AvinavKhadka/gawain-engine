@@ -17,9 +17,9 @@ interface Props {
 }
 
 const fmt = (n: number, format: string | null): string => {
-  if (format === "currency") return Math.round(n).toLocaleString("en-GB");
+  if (format === "currency") return "¥" + Math.round(n).toLocaleString("en-US");
   if (format === "percent")  return n.toFixed(1) + "%";
-  return Math.round(n).toLocaleString("en-GB");
+  return Math.round(n).toLocaleString("en-US");
 };
 
 function exportCsv(data: GridData, title: string) {
@@ -38,7 +38,7 @@ function exportCsv(data: GridData, title: string) {
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement("a");
   a.href     = url;
-  a.download = `${title.replace(/\s+/g, "_") || "export"}.csv`;
+  a.download = `${title.replace(/\s+/g, "_") || "ARASAKA_EXPORT"}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -63,18 +63,18 @@ function SaveTrainingBtn({ pair }: { pair: TrainingPair }) {
   };
 
   const label =
-    state === "saving" ? "Saving…"      :
-    state === "saved"  ? "✓ Saved"      :
-    state === "dup"    ? "Already saved":
-    state === "err"    ? "Error"        :
-                         "📚 Train";
+    state === "saving" ? "UPLINKING…" :
+    state === "saved"  ? "◉ SAVED_TO_CORE" :
+    state === "dup"    ? "ALREADY_ARCHIVED" :
+    state === "err"    ? "UPLINK_FAILED" :
+                         "◈ TRAIN_CORE";
 
   return (
     <button
       className={`grid-action-btn train-btn${state === "saved" ? " train-saved" : ""}`}
       onClick={save}
       disabled={state !== "idle"}
-      title="Save this corrected question + SQL as a training example"
+      title="Archive as neural training pair"
     >
       {label}
     </button>
@@ -83,46 +83,47 @@ function SaveTrainingBtn({ pair }: { pair: TrainingPair }) {
 
 export function DataGrid({ data, onPin, trainingPair }: Props) {
   const { columns, rows, total, _title } = data;
-  const title = _title || "Query Results";
+  const title = (_title || "DATA_MANIFEST").toUpperCase();
 
   const colDefs = useMemo<AGColDef[]>(() =>
     columns.map((col) => {
       const def: AGColDef = {
         field: col.field,
-        headerName: col.headerName,
+        headerName: col.headerName.toUpperCase(),
         sortable: true,
         filter: col.type === "number" ? "agNumberColumnFilter" : "agTextColumnFilter",
         resizable: true,
-        minWidth: 90,
+        minWidth: 110,
       };
       if (col.type === "number") {
         def.type = "numericColumn";
         def.valueFormatter = (p: ValueFormatterParams) =>
           p.value == null ? "" : fmt(Number(p.value), col.format);
+        // right-align numeric cells — font is already JetBrains Mono via ag-theme
         def.cellStyle = { textAlign: "right" };
       }
       return def;
     }), [columns]);
 
-  const rowHeight = 32;
-  const headerH  = 36;
-  const gridH    = Math.min(400, headerH + rows.length * rowHeight + 2);
+  const rowHeight = 34;
+  const headerH  = 38;
+  const gridH    = Math.min(420, headerH + rows.length * rowHeight + 2);
 
   const handleExport = useCallback(() => exportCsv(data, title), [data, title]);
 
   return (
     <div className="grid-wrapper">
       <div className="grid-header-bar">
-        <div className="grid-title">{title}</div>
+        <div className="grid-title">{title} // {rows.length} RECORDS</div>
         <div className="grid-actions">
           {trainingPair && <SaveTrainingBtn pair={trainingPair} />}
           {onPin && (
-            <button className="grid-action-btn" onClick={onPin} title="Pin to Dashboard">
-              📌
+            <button className="grid-action-btn" onClick={onPin} title="Pin to tactical dashboard">
+              ◈ PIN
             </button>
           )}
-          <button className="grid-action-btn" onClick={handleExport} title="Export CSV">
-            ↓ CSV
+          <button className="grid-action-btn" onClick={handleExport} title="Export to CSV enclosure">
+            ⬇ CSV
           </button>
         </div>
       </div>
@@ -139,9 +140,12 @@ export function DataGrid({ data, onPin, trainingPair }: Props) {
       </div>
       {total > rows.length && (
         <div className="grid-total-note">
-          Showing {rows.length.toLocaleString()} of {total.toLocaleString()} rows
+          DISPLAYING {rows.length.toLocaleString()} OF {total.toLocaleString()} RECORDS // ARASAKA_SECURE
         </div>
       )}
     </div>
   );
 }
+
+// Robust exports — supports both named and default import styles
+export default DataGrid;

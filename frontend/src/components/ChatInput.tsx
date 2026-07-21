@@ -1,14 +1,14 @@
 import { useRef, useState, type KeyboardEvent } from "react";
 
 const SUGGESTIONS = [
-  "Why did sales drop in 2013?",
-  "Which products sell most in each region?",
-  "Revenue trend by category 2010–2014",
-  "Gross profit margin by product category",
-  "Top 10 customers by total spend",
-  "Compare territories: 2012 vs 2013",
-  "Customer segment breakdown",
-  "Monthly revenue last 12 months",
+  "QUARTERLY_REVENUE_TREND 2010→2014 // ANOMALY_DETECT",
+  "VARIANCE_ANALYSIS: NET SALES DROP 2013 // -8.2%",
+  "TOP_10_CUSTOMER_ENTITIES BY TOTAL_CREDIT_ALLOC",
+  "MARGIN_DELTA: PRODUCT_CATEGORY // BIKES v ACCESSORIES",
+  "TERRITORY_PERF_COMPARISON 2012 vs 2013 // DRIVER_ATTR",
+  "CUSTOMER_SEGMENT_BREAKDOWN // EXEC_SUMMARY",
+  "GROSS_PROFIT_ATTRIBUTION: REGION // CHANNEL",
+  "MONTHLY_REVENUE LAST_12M // FORECAST_OVERLAY",
 ];
 
 interface Props {
@@ -37,7 +37,7 @@ export function ChatInput({ onSend, disabled, showSuggestions }: Props) {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = Math.min(el.scrollHeight, 150) + "px";
+    el.style.height = Math.min(el.scrollHeight, 160) + "px";
   };
 
   return (
@@ -45,7 +45,7 @@ export function ChatInput({ onSend, disabled, showSuggestions }: Props) {
       {showSuggestions && (
         <div className="suggestions">
           {SUGGESTIONS.map((s) => (
-            <button key={s} className="chip" onClick={() => { setValue(s); onSend(s); }}>
+            <button key={s} className="chip" onClick={() => { setValue(s); onSend(s); }} title="Deploy quick interrogative">
               {s}
             </button>
           ))}
@@ -58,11 +58,13 @@ export function ChatInput({ onSend, disabled, showSuggestions }: Props) {
           onChange={(e) => setValue(e.target.value)}
           onInput={onInput}
           onKeyDown={onKey}
-          placeholder="Ask anything about your data — e.g. 'Why did Bikes revenue fall in 2013?'"
+          placeholder="ENTER INTERROGATIVE // e.g. 'QUARTERLY VARIANCE ANALYSIS Q4 2013 - DRIVER ATTRIBUTION' // アラサカ"
           rows={1}
           disabled={disabled}
         />
-        <button className="send-btn" onClick={submit} disabled={disabled}>Ask</button>
+        <button className="send-btn" onClick={submit} disabled={disabled} title="Transmit to Gawain Core">
+          {disabled ? "UPLINK..." : "EXECUTE ▶"}
+        </button>
       </div>
     </>
   );

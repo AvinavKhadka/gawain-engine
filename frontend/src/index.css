@@ -1,4 +1,50 @@
-/* Gawain — global reset (theme is in App.css) */
+/* Arasaka // Gawain Engine — base reset */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&display=swap');
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-body { margin: 0; -webkit-font-smoothing: antialiased; }
-#root { height: 100vh; }
+
+html, body {
+  height: 100%;
+  background: #05070d;
+}
+
+body {
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+}
+
+#root {
+  height: 100vh;
+  isolation: isolate;
+}
+
+::selection {
+  background: #ff003c;
+  color: #fff;
+}
+
+::-moz-selection {
+  background: #ff003c;
+  color: #fff;
+}
+
+/* Scrollbar — Arasaka Red */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #ff003c #05070d;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #ff003c;
+  border-radius: 0;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}

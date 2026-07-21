@@ -88,10 +88,10 @@ CAT_HINTS  = {
     "type", "name", "group", "segment", "channel",
 }
 
-# Barclays colour palette for charts
+# Arasaka tactical palette for charts — red chrome, neon cyan, warning yellow
 CHART_COLORS = [
-    "#00AEEF", "#00A98F", "#0077B6", "#F59E0B", "#7DD3FC",
-    "#4DB8D1", "#005BAA", "#FF6B6B", "#A78BFA", "#34D399",
+    "#ff003c", "#00f0ff", "#fcee0a", "#ffffff", "#9d00ff",
+    "#00ff88", "#ff6b00", "#0080ff", "#ff4d6d", "#47e5ff",
 ]
 
 

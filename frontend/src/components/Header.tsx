@@ -15,56 +15,128 @@ interface Props {
 
 function Badge({ ok, okLabel, errLabel }: { ok: boolean; okLabel: string; errLabel: string }) {
   return (
-    <span className={`badge ${ok ? "ok" : "err"}`}>
+    <span className={`badge ${ok ? "ok" : "err"}`} title={ok ? "LINK SECURE" : "LINK FAILURE"}>
       {ok ? okLabel : errLabel}
     </span>
   );
 }
 
-function BarclaysLogo() {
+/* 
+ * AUTHENTIC ARASAKA EMBLEM — CLEAN REBUILD
+ * No potrace cropping, 100x100 viewBox, overflow visible
+ * Outer ring + 3 circles + Y stem = actual 2077 design, complete circle guaranteed
+ */
+function ArasakaEmblemAuth() {
   return (
-    <svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="18" cy="18" r="17" fill="#00AEEF" />
-      <path d="M6 17 Q10 10 18 13 Q26 10 30 17 Q26 21 18 17 Q10 21 6 17Z"
-            fill="white" opacity="0.95" />
-      <ellipse cx="18" cy="20" rx="4.5" ry="5.5" fill="white" />
-      <circle cx="18" cy="13.5" r="3" fill="white" />
-    </svg>
+    <div className="arasaka-mark-auth" title="ARASAKA CORPORATION — アラサカ">
+      <svg
+        viewBox="0 0 100 100"
+        className="arasaka-emblem-svg"
+        xmlns="http://www.w3.org/2000/svg"
+        aria-hidden="true"
+        overflow="visible"
+        preserveAspectRatio="xMidYMid meet"
+      >
+        {/* Outer ring */}
+        <circle cx="50" cy="50" r="41.5" fill="none" stroke="currentColor" strokeWidth="6.2" />
+        {/* Inner triskele — 3 dots */}
+        <g fill="currentColor">
+          <circle cx="50" cy="25.5" r="12.2" />
+          <circle cx="27.2" cy="51.5" r="12.6" />
+          <circle cx="72.8" cy="51.5" r="12.6" />
+        </g>
+        {/* Y stem — thick */}
+        <g fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
+          {/* vertical top */}
+          <path d="M50 37.5 L50 72" strokeWidth="9.2" />
+          {/* left diagonal */}
+          <path d="M42.5 62 L32.5 55.5" strokeWidth="8.2" />
+          {/* right diagonal */}
+          <path d="M57.5 62 L67.5 55.5" strokeWidth="8.2" />
+          {/* lower stem */}
+          <path d="M50 72 L50 88" strokeWidth="9.2" />
+        </g>
+      </svg>
+    </div>
   );
 }
 
-export function Header({ status, theme, onToggleTheme, onRefreshSchema, onNewChat, onToggleHistory, onToggleDashboard, onToggleDrivers, driversReady, pinnedCount }: Props) {
+/* Wordmark — still potrace authentic but with padded viewBox to prevent bottom cut */
+function ArasakaWordmarkAuth() {
+  return (
+    <div className="arasaka-wordmark-auth" title="arasaka">
+      <svg
+        viewBox="-20 -20 1064 220"
+        className="arasaka-wordmark-svg"
+        xmlns="http://www.w3.org/2000/svg"
+        aria-hidden="true"
+        overflow="visible"
+        preserveAspectRatio="xMidYMid meet"
+      >
+        <g transform="translate(0,180) scale(0.1,-0.1)" fill="currentColor">
+          <path d="M905 1424 c-105 -19 -245 -87 -318 -154 -197 -180 -238 -461 -99 -676 158 -244 528 -345 813 -223 27 12 49 24 49 27 0 3 -30 57 -66 119 -52 90 -70 113 -83 108 -76 -32 -107 -37 -189 -33 -97 5 -145 24 -211 84 -115 103 -114 296 1 400 69 62 140 88 238 89 73 0 94 -4 148 -29 80 -37 146 -108 167 -179 12 -40 15 -111 15 -344 l0 -293 155 0 155 0 0 299 c0 164 -4 320 -9 347 -41 215 -213 388 -446 449 -89 23 -226 27 -320 9z M1817 1434 c-4 -4 -7 -229 -7 -501 l0 -493 155 0 154 0 3 56 3 55 177 -115 176 -116 257 0 c142 0 254 4 251 9 -3 4 -199 134 -436 287 l-430 278 0 138 0 138 210 0 c242 0 271 -6 295 -64 9 -22 15 -68 15 -121 l0 -85 155 0 155 0 0 98 c-1 234 -70 357 -235 418 -45 16 -93 19 -470 22 -231 2 -424 0 -428 -4z M3613 1431 c-241 -39 -432 -185 -504 -386 -27 -74 -35 -201 -19 -278 38 -186 192 -346 397 -413 79 -26 101 -29 223 -29 88 0 149 5 175 14 79 27 135 54 135 65 0 23 -127 221 -141 219 -8 -1 -34 -9 -59 -18 -67 -25 -199 -18 -264 14 -56 28 -116 84 -143 133 -26 48 -25 189 2 243 28 57 88 113 154 143 48 23 70 27 146 27 77 -1 98 -5 146 -28 72 -35 125 -87 155 -151 23 -50 24 -56 24 -358 l0 -308 155 0 156 0 -3 338 c-3 316 -4 341 -24 393 -83 218 -311 372 -569 384 -49 2 -113 0 -142 -4z M5010 1433 c-14 -3 -28 -10 -32 -17 -4 -6 -8 -64 -8 -128 l0 -118 193 0 c220 0 248 -7 280 -72 l19 -38 150 0 151 0 -5 65 c-14 164 -131 278 -313 305 -69 9 -386 12 -435 3z M6445 1424 c-120 -22 -249 -88 -334 -172 -109 -107 -161 -230 -161 -383 0 -108 24 -190 80 -276 160 -244 527 -344 811 -222 27 12 49 25 49 29 0 8 -116 210 -127 221 -5 5 -32 0 -61 -11 -35 -14 -77 -20 -127 -20 -133 0 -232 55 -290 161 -25 45 -29 65 -29 124 0 117 61 208 176 260 83 38 168 43 258 16 62 -19 82 -31 131 -80 86 -86 89 -102 89 -458 l0 -293 155 0 155 0 0 308 c0 331 -7 386 -54 480 -81 160 -256 282 -455 318 -95 17 -164 16 -266 -2z M7357 1434 c-4 -4 -7 -229 -7 -501 l0 -493 160 0 159 0 3 104 3 103 230 -163 230 -164 255 0 c146 0 250 4 245 9 -12 11 -173 124 -512 360 -145 101 -263 186 -263 189 0 4 174 128 386 276 212 149 387 273 390 278 3 4 -105 8 -239 8 l-244 0 -239 -165 -239 -166 -5 163 -5 163 -151 3 c-82 1 -153 -1 -157 -4z M9007 1424 c-293 -53 -498 -279 -497 -548 1 -155 44 -260 155 -371 181 -182 492 -238 736 -134 27 12 49 25 49 29 0 5 -30 59 -66 120 -52 88 -69 110 -82 105 -77 -32 -108 -37 -190 -33 -129 7 -210 55 -267 160 -25 44 -29 64 -29 123 0 119 61 207 179 262 49 22 74 27 140 28 111 0 174 -24 247 -96 85 -84 88 -100 88 -456 l0 -293 156 0 155 0 -3 333 c-4 309 -6 336 -25 389 -75 201 -253 343 -483 384 -94 17 -163 16 -263 -2z M4530 1120 c0 -61 -38 -34 440 -305 201 -113 369 -210 375 -216 5 -5 -76 -9 -218 -9 -295 0 -317 9 -333 127 l-6 52 -150 3 c-83 2 -152 0 -154 -3 -2 -4 0 -49 5 -102 11 -115 42 -187 107 -246 59 -55 117 -79 222 -91 98 -11 885 -13 947 -2 l40 7 0 170 0 169 -439 248 -439 248 -198 0 -199 0 0 -50z" />
+        </g>
+      </svg>
+    </div>
+  );
+}
+
+export function Header({
+  status,
+  theme,
+  onToggleTheme,
+  onRefreshSchema,
+  onNewChat,
+  onToggleHistory,
+  onToggleDashboard,
+  onToggleDrivers,
+  driversReady,
+  pinnedCount,
+}: Props) {
   return (
     <header>
-      <BarclaysLogo />
-      <div className="brand">
-        <span className="brand-name">BARCLAYS</span>
-        <span className="brand-sub">Gawain — Data Intelligence</span>
+      <ArasakaEmblemAuth />
+      <div className="brand brand-auth">
+        <div className="brand-wordmark-row">
+          <ArasakaWordmarkAuth />
+          <span className="brand-kanji">アラサカ</span>
+        </div>
+        <span className="brand-sub">
+          <b>GAWAIN ENGINE</b> // DATA INTELLIGENCE SYSTEM // SEC_CLEARANCE: 4
+        </span>
       </div>
       <div className="brand-divider" />
       <div className="status-bar">
         {status ? (
           <>
-            <Badge ok={status.database} okLabel="DB Connected"  errLabel="DB Error" />
-            <Badge ok={status.ollama}   okLabel="Ollama Ready"  errLabel="Ollama Offline" />
+            <Badge ok={status.database} okLabel="DB: LINKED" errLabel="DB: OFFLINE" />
+            <Badge ok={status.ollama} okLabel="NEURAL: ONLINE" errLabel="NEURAL: OFFLINE" />
           </>
         ) : (
-          <span className="badge loading">Connecting…</span>
+          <span className="badge loading">ESTABLISHING UPLINK…</span>
         )}
-        <button className="hdr-btn hdr-btn-theme" onClick={onToggleTheme}>
-          {theme === "dark" ? "Light Mode" : "Dark Mode"}
+        <button className="hdr-btn hdr-btn-theme" onClick={onToggleTheme} title="Toggle optical filter">
+          {theme === "dark" ? "◑ DAY_PROTOCOL" : "◐ NIGHT_OPS"}
         </button>
-        <button className="hdr-btn" onClick={onRefreshSchema}>Refresh Schema</button>
-        <button className="hdr-btn" onClick={onToggleHistory}>History</button>
-        <button className="hdr-btn hdr-btn-drivers" onClick={onToggleDrivers}>
-          Driver Data
+        <button className="hdr-btn" onClick={onRefreshSchema} title="Refresh schema context">
+          ⟳ SCHEMA
+        </button>
+        <button className="hdr-btn" onClick={onToggleHistory} title="Access operation history">
+          HIST
+        </button>
+        <button className="hdr-btn hdr-btn-drivers" onClick={onToggleDrivers} title="Driver analysis substrate">
+          DRIVERS
           <span className={`driver-dot ${driversReady ? "on" : "off"}`} />
         </button>
-        <button className="hdr-btn hdr-btn-dashboard" onClick={onToggleDashboard}>
-          Dashboard{pinnedCount > 0 ? ` (${pinnedCount})` : ""}
+        <button className="hdr-btn hdr-btn-dashboard" onClick={onToggleDashboard} title="Pinned tactical readouts">
+          DASH{pinnedCount > 0 ? ` [${pinnedCount}]` : ""}
         </button>
-        <button className="hdr-btn hdr-btn-new" onClick={onNewChat}>+ New Chat</button>
+        <button className="hdr-btn hdr-btn-new" onClick={onNewChat} title="Initialize new session">
+          + NEW_LINK
+        </button>
       </div>
     </header>
   );
 }
+
+export default Header;

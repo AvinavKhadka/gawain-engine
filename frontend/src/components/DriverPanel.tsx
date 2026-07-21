@@ -10,8 +10,7 @@ interface Props {
 }
 
 function fmtBuilt(iso: string): string {
-  // built_at is a local "YYYY-MM-DD HH:MM:SS" string from the backend
-  return iso.replace(" ", " · ");
+  return iso.replace(" ", " // ");
 }
 
 export function DriverPanel({ meta, loading, rebuilding, error, onRebuild, onClose }: Props) {
@@ -19,28 +18,31 @@ export function DriverPanel({ meta, loading, rebuilding, error, onRebuild, onClo
     <div className="panel-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="driver-panel">
         <div className="panel-header">
-          <span className="panel-title">Driver Analysis</span>
+          <span className="panel-title">⬢ ARASAKA // DRIVER SUBSTRATE</span>
           <span className={`badge ${meta ? "ok" : "err"}`}>
-            {meta ? "Extract Ready" : "Not Built"}
+            {meta ? "EXTRACT: ACTIVE" : "EXTRACT: NULL"}
           </span>
-          <button className="panel-close" onClick={onClose}>✕</button>
+          <button className="panel-close" onClick={onClose}>✕ CLOSE</button>
         </div>
 
         <div className="driver-body">
           <p className="driver-intro">
-            Driver analysis runs on a local DuckDB extract of your star schema —
-            the substrate for period attribution, key-influencer ranking, and
-            changepoint detection. Rebuild it after the underlying data changes.
+            ARASAKA_DRIVER_ANALYSIS // TACTICAL SUBSTRATE<br />
+            Local DuckDB extract of star schema. Powers period attribution,
+            key-influencer ranking, changepoint detection algorithms.
+            Rebuild protocol required after source data mutation.<br />
+            <span style={{color:"var(--red)", fontSize:"0.66rem", letterSpacing:"0.14em"}}>アラサカドライバー分析 // SEC_CLEARANCE 4 REQUIRED</span>
           </p>
 
-          {loading && <div className="panel-loading">Checking extract…</div>}
+          {loading && <div className="panel-loading">▶ ANALYZING SUBSTRATE INTEGRITY…</div>}
 
-          {error && <div className="driver-error">⚠ {error}</div>}
+          {error && <div className="driver-error">⟁ SUBSTRATE_FAULT // {error}</div>}
 
           {!loading && !meta && (
             <div className="panel-empty">
-              No extract has been built yet. Click <b>Rebuild Extract</b> to pull
-              the fact and dimensions from SQL Server into the local store.
+              NO EXTRACT ESTABLISHED IN LOCAL ENCLAVE.<br />
+              EXECUTE <b>REBUILD PROTOCOL</b> TO PULL FACT + DIMENSIONS FROM SQL SERVER INTO SECURE STORE.<br />
+              EST_TIME: 45-90s // REQUIRES DB LINK
             </div>
           )}
 
@@ -49,7 +51,7 @@ export function DriverPanel({ meta, loading, rebuilding, error, onRebuild, onClo
               <div className="driver-stats">
                 <div className="driver-stat">
                   <span className="driver-stat-val">{meta.rows.toLocaleString()}</span>
-                  <span className="driver-stat-lbl">rows</span>
+                  <span className="driver-stat-lbl">records</span>
                 </div>
                 <div className="driver-stat">
                   <span className="driver-stat-val">{meta.dims.length}</span>
@@ -62,44 +64,44 @@ export function DriverPanel({ meta, loading, rebuilding, error, onRebuild, onClo
               </div>
 
               <div className="driver-meta-row">
-                <span className="driver-meta-key">Fact</span>
-                <span className="driver-meta-val">{meta.fact}</span>
+                <span className="driver-meta-key">FACT_TABLE</span>
+                <span className="driver-meta-val">{meta.fact.toUpperCase()}</span>
               </div>
               <div className="driver-meta-row">
-                <span className="driver-meta-key">Date range</span>
+                <span className="driver-meta-key">DATE_RANGE</span>
                 <span className="driver-meta-val">{meta.date_min} → {meta.date_max}</span>
               </div>
               <div className="driver-meta-row">
-                <span className="driver-meta-key">Built</span>
+                <span className="driver-meta-key">BUILT_AT</span>
                 <span className="driver-meta-val">
-                  {fmtBuilt(meta.built_at)} ({meta.elapsed_sec}s)
+                  {fmtBuilt(meta.built_at)} // {meta.elapsed_sec}s ELAPSED
                 </span>
               </div>
 
-              <div className="panel-section-label">Measures</div>
+              <div className="panel-section-label">MEASURE_MANIFEST // {meta.measures.length}</div>
               <div className="driver-chips">
                 {meta.measures.map((m) => (
-                  <span key={m} className="driver-chip driver-chip-measure">{m}</span>
+                  <span key={m} className="driver-chip driver-chip-measure">{m.toUpperCase()}</span>
                 ))}
               </div>
 
               <div className="panel-section-label">
-                Dimension fields ({meta.dims.length})
+                DIMENSION_FIELDS // {meta.dims.length} ACTIVE
               </div>
               <div className="driver-chips">
                 {meta.dims.map((d) => (
-                  <span key={d} className="driver-chip">{d}</span>
+                  <span key={d} className="driver-chip">{d.toUpperCase()}</span>
                 ))}
               </div>
 
               {meta.dropped_high_cardinality.length > 0 && (
                 <>
                   <div className="panel-section-label">
-                    Dropped — too high-cardinality ({meta.dropped_high_cardinality.length})
+                    DROPPED // HIGH_CARDINALITY [{meta.dropped_high_cardinality.length}]
                   </div>
                   <div className="driver-chips">
                     {meta.dropped_high_cardinality.map((d) => (
-                      <span key={d} className="driver-chip driver-chip-dropped">{d}</span>
+                      <span key={d} className="driver-chip driver-chip-dropped">{d.toUpperCase()}</span>
                     ))}
                   </div>
                 </>
@@ -114,7 +116,7 @@ export function DriverPanel({ meta, loading, rebuilding, error, onRebuild, onClo
             onClick={onRebuild}
             disabled={rebuilding}
           >
-            {rebuilding ? "Rebuilding… (this can take a minute)" : "↻ Rebuild Extract"}
+            {rebuilding ? "◉ REBUILDING SUBSTRATE… // HOLD POSITION" : "⟳ INITIATE REBUILD PROTOCOL // ARASAKA_SECURE"}
           </button>
         </div>
       </div>

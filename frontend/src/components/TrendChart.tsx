@@ -1,28 +1,54 @@
 import { useRef, useEffect } from "react";
 import {
-  Chart,
-  LineElement, BarElement, PointElement, ArcElement,
-  LineController, BarController, DoughnutController, ScatterController,
-  CategoryScale, LinearScale,
-  Tooltip, Legend, Filler,
-  type ChartOptions,
+  Chart as ChartJS,
+  LineElement,
+  BarElement,
+  PointElement,
+  ArcElement,
+  LineController,
+  BarController,
+  DoughnutController,
+  ScatterController,
+  CategoryScale,
+  LinearScale,
+  Tooltip,
+  Legend,
+  Filler,
 } from "chart.js";
 import type { ChartData } from "../types";
 
-Chart.register(
-  LineElement, BarElement, PointElement, ArcElement,
-  LineController, BarController, DoughnutController, ScatterController,
-  CategoryScale, LinearScale,
-  Tooltip, Legend, Filler
+ChartJS.register(
+  LineElement,
+  BarElement,
+  PointElement,
+  ArcElement,
+  LineController,
+  BarController,
+  DoughnutController,
+  ScatterController,
+  CategoryScale,
+  LinearScale,
+  Tooltip,
+  Legend,
+  Filler
 );
 
-Chart.defaults.color       = "#446F8B";
-Chart.defaults.borderColor = "#D0DDE8";
-Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+ChartJS.defaults.color = "#8b93b0";
+ChartJS.defaults.borderColor = "#1e2236";
+ChartJS.defaults.font.family = '"JetBrains Mono", monospace';
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+// ARASAKA palette — neon tactical
 const SEGMENT_COLORS = [
-  "#00AEEF", "#00A98F", "#0077B6", "#F59E0B",
-  "#7DD3FC", "#4DB8D1", "#005BAA", "#FF6B6B",
+  "#ff003c",
+  "#00f0ff",
+  "#fcee0a",
+  "#ffffff",
+  "#9d00ff",
+  "#00ff88",
+  "#ff6b00",
+  "#0080ff",
 ];
 
 interface Props {
@@ -32,193 +58,90 @@ interface Props {
 
 const tickY = (v: number | string) => {
   const n = Number(v);
-  if (Math.abs(n) >= 1_000_000) return "$" + (n / 1_000_000).toFixed(1) + "M";
-  if (Math.abs(n) >= 1_000)     return "$" + (n / 1_000).toFixed(0) + "K";
+  if (Math.abs(n) >= 1_000_000) return "¥" + (n / 1_000_000).toFixed(1) + "M";
+  if (Math.abs(n) >= 1_000) return "¥" + (n / 1_000).toFixed(0) + "K";
   return n.toLocaleString("en-US");
 };
 
 export function TrendChart({ data, onPin }: Props) {
-  const ref      = useRef<HTMLCanvasElement>(null);
-  const chartRef = useRef<Chart | null>(null);
+  const ref = useRef<HTMLCanvasElement>(null);
+  const chartRef = useRef<any>(null);
 
   useEffect(() => {
     if (!ref.current) return;
     chartRef.current?.destroy();
-
     const { type } = data;
-
-    // ── Doughnut ────────────────────────────────────────────────────────
-    if (type === "doughnut") {
-      const ds = data.datasets[0];
-      const bgColors  = (ds.segmentColors ?? data.labels.map((_, i) => SEGMENT_COLORS[i % SEGMENT_COLORS.length]))
-                          .map((c) => c + "CC");
-      const bdrColors = ds.segmentColors ?? data.labels.map((_, i) => SEGMENT_COLORS[i % SEGMENT_COLORS.length]);
-      chartRef.current = new Chart(ref.current, {
-        type: "doughnut",
-        data: {
-          labels: data.labels,
-          datasets: [{
-            label: ds.label,
-            data: ds.data as number[],
-            backgroundColor: bgColors,
-            borderColor: bdrColors,
-            borderWidth: 2,
-            hoverOffset: 6,
-          }],
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { position: "right", labels: { font: { size: 11 }, boxWidth: 12, padding: 14, color: "#446F8B" } },
-            tooltip: {
-              backgroundColor: "#FFFFFF", borderColor: "#D0DDE8", borderWidth: 1,
-              titleColor: "#002B5C", bodyColor: "#446F8B",
-              callbacks: {
-                label: (ctx) => {
-                  const v = ctx.raw as number;
-                  const total = (ctx.dataset.data as number[]).reduce((a, b) => a + b, 0);
-                  const pct = ((v / total) * 100).toFixed(1);
-                  return ` ${ctx.label}: ${Math.abs(v) >= 1000 ? "$" + Math.round(v).toLocaleString("en-US") : v}  (${pct}%)`;
-                },
-              },
-            },
-          },
-        },
-      });
-      return () => { chartRef.current?.destroy(); };
-    }
-
-    // ── Scatter ─────────────────────────────────────────────────────────
-    if (type === "scatter") {
-      const ds = data.datasets[0];
-      chartRef.current = new Chart(ref.current, {
-        type: "scatter",
-        data: {
-          datasets: [{
-            label: ds.label,
-            data: ds.data as { x: number; y: number }[],
-            backgroundColor: ds.color + "BB",
-            borderColor: ds.color,
-            borderWidth: 1.5,
-            pointRadius: 5,
-            pointHoverRadius: 7,
-          }],
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { labels: { font: { size: 11 }, boxWidth: 12, padding: 12, color: "#446F8B" } },
-            tooltip: {
-              backgroundColor: "#FFFFFF", borderColor: "#D0DDE8", borderWidth: 1,
-              titleColor: "#002B5C", bodyColor: "#446F8B",
-              callbacks: {
-                label: (ctx) => {
-                  const p = ctx.raw as { x: number; y: number };
-                  return ` ${data.xLabel ?? "x"}: ${p.x}  ${data.yLabel ?? "y"}: ${p.y}`;
-                },
-              },
-            },
-          },
-          scales: {
-            x: {
-              title: { display: !!data.xLabel, text: data.xLabel, color: "#446F8B" },
-              ticks: { font: { size: 10 }, color: "#7FA8C0", callback: tickY },
-              grid:  { color: "#EAF0F6" },
-            },
-            y: {
-              title: { display: !!data.yLabel, text: data.yLabel, color: "#446F8B" },
-              ticks: { font: { size: 10 }, color: "#7FA8C0", callback: tickY },
-              grid:  { color: "#EAF0F6" },
-            },
-          },
-        },
-      });
-      return () => { chartRef.current?.destroy(); };
-    }
-
-    // ── Stacked Bar ─────────────────────────────────────────────────────
-    if (type === "stacked_bar") {
-      chartRef.current = new Chart(ref.current, {
-        type: "bar",
-        data: {
-          labels: data.labels,
-          datasets: data.datasets.map((ds) => ({
-            label: ds.label,
-            data: ds.data as number[],
-            backgroundColor: ds.color + "BB",
-            borderColor: ds.color,
-            borderWidth: 1.5,
-          })),
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          interaction: { mode: "index", intersect: false },
-          plugins: {
-            legend: { labels: { font: { size: 11 }, boxWidth: 12, padding: 12, color: "#446F8B" } },
-            tooltip: {
-              backgroundColor: "#FFFFFF", borderColor: "#D0DDE8", borderWidth: 1,
-              titleColor: "#002B5C", bodyColor: "#446F8B",
-            },
-          },
-          scales: {
-            x: { stacked: true, ticks: { font: { size: 10 }, maxRotation: 45, color: "#7FA8C0" }, grid: { color: "#EAF0F6" } },
-            y: { stacked: true, ticks: { font: { size: 10 }, color: "#7FA8C0", callback: tickY }, grid: { color: "#EAF0F6" } },
-          },
-        } as ChartOptions,
-      });
-      return () => { chartRef.current?.destroy(); };
-    }
-
-    // ── Bar / Line ───────────────────────────────────────────────────────
-    const isLine = type === "line";
-    const options: ChartOptions = {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: "index", intersect: false },
-      plugins: {
-        legend: { labels: { font: { size: 11 }, boxWidth: 12, padding: 12, color: "#446F8B" } },
-        tooltip: {
-          backgroundColor: "#FFFFFF", borderColor: "#D0DDE8", borderWidth: 1,
-          titleColor: "#002B5C", bodyColor: "#446F8B",
-          callbacks: {
-            label: (ctx) => {
-              const v = ctx.raw as number;
-              if (Math.abs(v) >= 1000)
-                return ` ${ctx.dataset.label}: ${Math.round(v).toLocaleString("en-US")}`;
-              return ` ${ctx.dataset.label}: ${v}`;
-            },
-          },
-        },
-      },
-      scales: {
-        x: { ticks: { font: { size: 10 }, maxRotation: 45, color: "#7FA8C0" }, grid: { color: "#EAF0F6" } },
-        y: { ticks: { font: { size: 10 }, color: "#7FA8C0", callback: tickY }, grid: { color: "#EAF0F6" } },
-      },
+    const createChart = (config: any) => {
+      chartRef.current = new (ChartJS as any)(ref.current as any, config);
     };
 
-    chartRef.current = new Chart(ref.current, {
-      type: isLine ? "line" : "bar",
-      data: {
-        labels: data.labels,
-        datasets: data.datasets.map((ds) => ({
-          label: ds.label,
-          data: ds.data as number[],
-          backgroundColor: isLine ? ds.color + "20" : ds.color + "BB",
-          borderColor: ds.color,
-          borderWidth: isLine ? 2 : 1.5,
-          tension: 0.4,
-          fill: isLine,
-          pointRadius: data.labels.length > 40 ? 0 : 3,
-          pointHoverRadius: 5,
-          pointBackgroundColor: ds.color,
-        })),
-      },
-      options,
-    });
+    if (type === "doughnut") {
+      const ds = data.datasets[0];
+      const bgColors = (ds.segmentColors ?? data.labels.map((_, i) => SEGMENT_COLORS[i % SEGMENT_COLORS.length])).map((c) => c + "CC");
+      const bdrColors = ds.segmentColors ?? data.labels.map((_, i) => SEGMENT_COLORS[i % SEGMENT_COLORS.length]);
+      createChart({
+        type: "doughnut" as const,
+        data: { labels: data.labels, datasets: [{ label: ds.label, data: ds.data as number[], backgroundColor: bgColors, borderColor: bdrColors, borderWidth: 1.5, hoverOffset: 8 }] },
+        options: {
+          responsive: true, maintainAspectRatio: false, cutout: "62%",
+          plugins: {
+            legend: { position: "right" as const, labels: { font: { size: 10, family: "JetBrains Mono" }, boxWidth: 10, padding: 12, color: "#8b93b0", usePointStyle: true } },
+            tooltip: { backgroundColor: "#0d0f18", titleColor: "#e9ecf5", bodyColor: "#8b93b0", borderColor: "#ff003c", borderWidth: 1, callbacks: { label: (ctx: any) => { const v = ctx.raw as number; const total = (ctx.dataset.data as number[]).reduce((a: number, b: number) => a + b, 0); const pct = ((v / total) * 100).toFixed(1); return ` ${ctx.label}: ¥${Math.round(v).toLocaleString()}  (${pct}%)`; } } },
+          },
+        },
+      } as any);
+      return () => { chartRef.current?.destroy(); };
+    }
 
+    if (type === "scatter") {
+      const ds = data.datasets[0];
+      createChart({
+        type: "scatter" as const,
+        data: { datasets: [{ label: ds.label, data: ds.data as { x: number; y: number }[], backgroundColor: (ds.color as string) + "CC", borderColor: ds.color, borderWidth: 1.5, pointRadius: 4, pointHoverRadius: 7 }] },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { labels: { font: { size: 10, family: "JetBrains Mono" }, boxWidth: 10, padding: 10, color: "#8b93b0", usePointStyle: true } }, tooltip: { backgroundColor: "#0d0f18", borderColor: "#00f0ff", borderWidth: 1, titleColor: "#e9ecf5", bodyColor: "#8b93b0" } },
+          scales: {
+            x: { title: { display: !!data.xLabel, text: data.xLabel, color: "#8b93b0", font: { family: "Orbitron", size: 10 } }, ticks: { font: { size: 9, family: "JetBrains Mono" }, color: "#4f5776", callback: tickY as any }, grid: { color: "rgba(255,255,255,0.05)" } },
+            y: { title: { display: !!data.yLabel, text: data.yLabel, color: "#8b93b0", font: { family: "Orbitron", size: 10 } }, ticks: { font: { size: 9, family: "JetBrains Mono" }, color: "#4f5776", callback: tickY as any }, grid: { color: "rgba(255,255,255,0.05)" } },
+          },
+        },
+      } as any);
+      return () => { chartRef.current?.destroy(); };
+    }
+
+    if (type === "stacked_bar") {
+      createChart({
+        type: "bar" as const,
+        data: { labels: data.labels, datasets: data.datasets.map((ds: any, i: number) => ({ label: ds.label, data: ds.data as number[], backgroundColor: (ds.color as string) + "BB" || SEGMENT_COLORS[i % SEGMENT_COLORS.length] + "BB", borderColor: ds.color || SEGMENT_COLORS[i % SEGMENT_COLORS.length], borderWidth: 1 })) },
+        options: {
+          responsive: true, maintainAspectRatio: false, interaction: { mode: "index" as const, intersect: false },
+          plugins: { legend: { labels: { font: { size: 10, family: "JetBrains Mono" }, boxWidth: 10, padding: 10, color: "#8b93b0", usePointStyle: true } }, tooltip: { backgroundColor: "#0d0f18", borderColor: "#1e2236", borderWidth: 1, titleColor: "#e9ecf5", bodyColor: "#8b93b0" } },
+          scales: {
+            x: { stacked: true, ticks: { font: { size: 9, family: "JetBrains Mono" }, maxRotation: 45, color: "#4f5776" }, grid: { color: "rgba(255,255,255,0.04)" } },
+            y: { stacked: true, ticks: { font: { size: 9, family: "JetBrains Mono" }, color: "#4f5776", callback: tickY as any }, grid: { color: "rgba(255,255,255,0.05)" } },
+          },
+        },
+      } as any);
+      return () => { chartRef.current?.destroy(); };
+    }
+
+    const isLine = type === "line";
+    createChart({
+      type: isLine ? ("line" as const) : ("bar" as const),
+      data: { labels: data.labels, datasets: data.datasets.map((ds: any, i: number) => ({ label: ds.label, data: ds.data as number[], backgroundColor: isLine ? (ds.color || SEGMENT_COLORS[i % SEGMENT_COLORS.length]) + "20" : (ds.color || SEGMENT_COLORS[i % SEGMENT_COLORS.length]) + "BB", borderColor: ds.color || SEGMENT_COLORS[i % SEGMENT_COLORS.length], borderWidth: isLine ? 2 : 1, tension: 0.35, fill: isLine, pointRadius: data.labels.length > 40 ? 0 : 2.5, pointHoverRadius: 5, pointBackgroundColor: ds.color || SEGMENT_COLORS[i % SEGMENT_COLORS.length] })) },
+      options: {
+        responsive: true, maintainAspectRatio: false, interaction: { mode: "index" as const, intersect: false },
+        plugins: {
+          legend: { labels: { font: { size: 10, family: "JetBrains Mono" }, boxWidth: 10, padding: 10, color: "#8b93b0", usePointStyle: true } },
+          tooltip: { backgroundColor: "#0d0f18", borderColor: "#1e2236", borderWidth: 1, titleColor: "#e9ecf5", bodyColor: "#8b93b0", callbacks: { label: (ctx: any) => { const v = ctx.raw as number; if (Math.abs(v) >= 1000) return ` ${ctx.dataset.label}: ¥${Math.round(v).toLocaleString()}`; return ` ${ctx.dataset.label}: ${v}`; } } },
+        },
+        scales: {
+          x: { ticks: { font: { size: 9, family: "JetBrains Mono" }, maxRotation: 45, color: "#4f5776" }, grid: { color: "rgba(255,255,255,0.04)" } },
+          y: { ticks: { font: { size: 9, family: "JetBrains Mono" }, color: "#4f5776", callback: tickY as any }, grid: { color: "rgba(255,255,255,0.06)" } },
+        },
+      },
+    } as any);
     return () => { chartRef.current?.destroy(); };
   }, [data]);
 
@@ -226,14 +149,11 @@ export function TrendChart({ data, onPin }: Props) {
   return (
     <div className={`chart-wrapper${isDoughnut ? " doughnut" : ""}`}>
       <div className="chart-header-bar">
-        {data.title && <div className="chart-title">{data.title}</div>}
-        {onPin && (
-          <button className="chart-pin-btn" onClick={onPin} title="Pin to Dashboard">📌</button>
-        )}
+        {data.title && <div className="chart-title">{data.title.toUpperCase()} // TACTICAL_FEED</div>}
+        {onPin && (<button className="chart-pin-btn" onClick={onPin}>◈ PIN</button>)}
       </div>
-      <div className={`chart-canvas-wrap${isDoughnut ? " doughnut" : ""}`}>
-        <canvas ref={ref} />
-      </div>
+      <div className={`chart-canvas-wrap${isDoughnut ? " doughnut" : ""}`}><canvas ref={ref} /></div>
     </div>
   );
 }
+export default TrendChart;

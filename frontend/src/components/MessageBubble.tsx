@@ -5,12 +5,11 @@ import { TrendChart } from "./TrendChart";
 
 interface Props {
   message: Message;
-  question?: string;           // user's question for this AI response (used for training)
+  question?: string;
   onRunSql?: (sql: string) => void;
   onPin?: (kind: "grid" | "chart", title: string, data: GridData | ChartData) => void;
 }
 
-// ── KPI Cards ────────────────────────────────────────────────────────────────
 function KpiCards({ cards }: { cards: KpiCard[] }) {
   return (
     <div className="kpi-grid">
@@ -24,7 +23,6 @@ function KpiCards({ cards }: { cards: KpiCard[] }) {
   );
 }
 
-// ── SQL block — collapsible + editable ───────────────────────────────────────
 function SqlBlock({ sql, onRunSql, autoEdit = false }: {
   sql: string;
   onRunSql?: (sql: string) => void;
@@ -55,7 +53,7 @@ function SqlBlock({ sql, onRunSql, autoEdit = false }: {
     <div className="sql-section">
       <button className="sql-toggle" onClick={() => setOpen((o) => !o)}>
         <span className={`sql-chevron${open ? " open" : ""}`}>▶</span>
-        Generated SQL
+        ARASAKA_NODE // GENERATED_TSQL [{sql.length} BYTES]
       </button>
       {open && (
         <div className="sql-block">
@@ -65,19 +63,20 @@ function SqlBlock({ sql, onRunSql, autoEdit = false }: {
               value={edited}
               onChange={(e) => setEdited(e.target.value)}
               rows={Math.max(4, edited.split("\n").length + 1)}
+              spellCheck={false}
             />
           ) : (
             <pre>{sql}</pre>
           )}
           <div className="sql-actions">
-            <button className="sql-copy" onClick={copy}>{copied ? "Copied!" : "Copy"}</button>
+            <button className="sql-copy" onClick={copy}>{copied ? "COPIED_TO_BUFFER" : "COPY_BUFFER"}</button>
             {onRunSql && !editing && (
-              <button className="sql-edit-btn" onClick={() => setEditing(true)}>Edit &amp; Run</button>
+              <button className="sql-edit-btn" onClick={() => setEditing(true)}>EDIT // RE-EXECUTE</button>
             )}
             {editing && (
               <>
-                <button className="sql-run-btn" onClick={handleRun}>▶ Run</button>
-                <button className="sql-cancel-btn" onClick={handleCancel}>Cancel</button>
+                <button className="sql-run-btn" onClick={handleRun}>▶ EXECUTE</button>
+                <button className="sql-cancel-btn" onClick={handleCancel}>ABORT</button>
               </>
             )}
           </div>
@@ -87,7 +86,6 @@ function SqlBlock({ sql, onRunSql, autoEdit = false }: {
   );
 }
 
-// ── Answer text with basic markdown ─────────────────────────────────────────
 function AnswerText({ text, streaming }: { text: string; streaming: boolean }) {
   const html = text
     .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
@@ -101,16 +99,12 @@ function AnswerText({ text, streaming }: { text: string; streaming: boolean }) {
 
   return (
     <div className="answer-section">
-      <div className="section-label">Analysis</div>
+      <div className="section-label">ARASAKA_ANALYSIS // FIELD_REPORT</div>
       <div className="answer-text" dangerouslySetInnerHTML={{ __html: html }} />
       {streaming && <span className="cursor" />}
     </div>
   );
 }
-
-// ── SQL block — collapsible + editable, auto-opens in edit mode on error ────
-// (replaces the existing SqlBlock above — same component, added autoEdit prop)
-
 
 type GroupedBlock =
   | { kind: "charts"; items: Extract<Block, { kind: "chart" }>[] }
@@ -136,16 +130,13 @@ function groupBlocks(blocks: Block[]): GroupedBlock[] {
 export function MessageBubble({ message, question, onRunSql, onPin }: Props) {
   const isUser  = message.role === "user";
   const grouped = groupBlocks(message.blocks);
-
-  // If the message has an error, auto-open the SQL block in edit mode
   const hasError  = message.blocks.some((b) => b.kind === "error");
-  // Extract SQL for the training pair (most recent sql block in this message)
   const sqlForTraining = (message.blocks.filter((b) => b.kind === "sql").pop() as
     { kind: "sql"; sql: string } | undefined)?.sql;
 
   return (
     <div className={`message ${isUser ? "user" : "assistant"}`}>
-      <div className="avatar">{isUser ? "You" : "AI"}</div>
+      <div className="avatar">{isUser ? "OP" : "GW"}</div>
       <div className="bubble">
         {grouped.map((g, gi) => {
           if (g.kind === "charts") {
@@ -156,7 +147,7 @@ export function MessageBubble({ message, question, onRunSql, onPin }: Props) {
                   <TrendChart
                     key={bi}
                     data={b.data}
-                    onPin={onPin ? () => onPin("chart", b.data.title || "Chart", b.data) : undefined}
+                    onPin={onPin ? () => onPin("chart", b.data.title || "TACTICAL_CHART", b.data) : undefined}
                   />
                 ))}
               </div>
@@ -171,7 +162,7 @@ export function MessageBubble({ message, question, onRunSql, onPin }: Props) {
               return (
                 <div key={gi} className="step-indicator">
                   <div className="spinner" />
-                  <span>{block.text}</span>
+                  <span>{block.text.toUpperCase()} // PROCESSING</span>
                 </div>
               );
 
@@ -186,7 +177,7 @@ export function MessageBubble({ message, question, onRunSql, onPin }: Props) {
                 <DataGrid
                   key={gi}
                   data={block.data}
-                  onPin={onPin ? () => onPin("grid", block.data._title || "Table", block.data) : undefined}
+                  onPin={onPin ? () => onPin("grid", block.data._title || "DATA_MANIFEST", block.data) : undefined}
                   trainingPair={question && sqlForTraining
                     ? { question, sql: sqlForTraining }
                     : undefined}
@@ -199,7 +190,7 @@ export function MessageBubble({ message, question, onRunSql, onPin }: Props) {
             }
 
             case "error":
-              return <div key={gi} className="error-block">{block.text}</div>;
+              return <div key={gi} className="error-block">⟁ SYSTEM_FAILURE // {block.text}</div>;
 
             default:
               return null;
@@ -209,3 +200,5 @@ export function MessageBubble({ message, question, onRunSql, onPin }: Props) {
     </div>
   );
 }
+
+export default MessageBubble;

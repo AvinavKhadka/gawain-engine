@@ -15,12 +15,12 @@ import "./App.css";
 const WELCOME_BLOCKS: Block[] = [
   {
     kind: "answer",
-    text: "**Welcome to Gawain.** I'm connected to **AdventureWorksDW2019** — bicycle & accessories sales intelligence (2010–2014, $29.4M across 60K orders).\n\nAsk me anything about the data:\n- Why did internet sales drop in 2013?\n- Show quarterly revenue trend from 2010 to 2014\n- Top 10 customers by total spend\n- Gross profit margin by product category\n- Sales by territory 2012 vs 2013",
+    text: "**ARASAKA // GAWAIN ENGINE ONLINE.**\n\n**SECURE CORPORATE DATA INTELLIGENCE NODE ACTIVE.**\nConnected to **AdventureWorksDW2019** tactical substrate — bicycle & accessory distribution, 2010-2014, $29.4M ledger across 60K transactions.\n\n**[CORPORATE DIRECTIVE]:** System translates natural language interrogatives into T-SQL, validates, executes, and returns KPI readouts, grid manifestations, and strategic analysis.\n\n**TRY DEPLOYING:**\n- Why did net sales variance drop -8.2% in 2013?\n- Quarterly revenue trend 2010 → 2014 // isolate anomaly\n- Top 10 customer entities by total credit allocation\n- Gross margin delta by product category // Bikes v Accessories\n- Territory performance comparison: 2012 vs 2013 // attribution drivers\n\n> アラサカは永遠です. Data is eternal. Control the data. Control Night City.\n\n*All queries logged to Arasaka secure enclave. Clearance Level 4 required.*",
   },
 ];
 
-const PINNED_STORAGE_KEY = "gawain_pinned_v1";
-const THEME_STORAGE_KEY = "gawain_theme_v1";
+const PINNED_STORAGE_KEY = "arasaka_pinned_v3";
+const THEME_STORAGE_KEY = "arasaka_theme_v2";
 
 type Theme = "light" | "dark";
 
@@ -39,7 +39,8 @@ function loadTheme(): Theme {
   } catch {
     // Ignore storage failures and fall back to the default theme.
   }
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  // Arasaka defaults to dark — NIGHT_OPS
+  return "dark";
 }
 
 export default function App() {
@@ -93,7 +94,7 @@ export default function App() {
     const item: PinnedItem = {
       id: crypto.randomUUID(),
       kind,
-      title,
+      title: title.toUpperCase() + " // ARASAKA_TACTICAL",
       data,
       pinnedAt: new Date().toISOString(),
     };
@@ -163,7 +164,6 @@ export default function App() {
           onPin={handlePin}
         />
         {messages.map((msg, idx) => {
-          // Find the most recent user message before this one (for training pairs)
           const prevUser = idx > 0
             ? [...messages].slice(0, idx).reverse().find((m) => m.role === "user")
             : undefined;
