@@ -1,74 +1,85 @@
-# Gawain — SQL RAG Data Intelligence
+# ⬢ GAWAIN ENGINE
+### 🏢 Enterprise Data Intelligence — Secure RAG System
+### アラサカ — データインテリジェンス
 
-A production-grade Retrieval-Augmented Generation (RAG) system that translates natural-language questions into T-SQL, executes them against SQL Server, and streams back KPI cards, interactive tables, charts, and a written analysis — all powered by a locally-run Ollama LLM (no cloud API required).
+[![Arasaka](https://img.shields.io/badge/ARASAKA-GAWAIN-%23ff003c?style=for-the-badge&labelColor=0a0a0f)](https://github.com/AvinavKhadka/gawain-engine)
+[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
+[![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev)
+[![Ollama](https://img.shields.io/badge/Ollama-Local_LLM-000000?style=flat-square)](https://ollama.com)
 
-```
-User question
-    │
-    ▼
-TF-IDF schema retrieval  ←─ SQL Server schema (INFORMATION_SCHEMA)
-    │
-    ▼
-Ollama LLM  ──generates──▶  T-SQL query
-    │
-    ▼
-SET NOEXEC ON validation  ──fail──▶  LLM auto-fix retry
-    │ pass
-    ▼
-SQL Server execution
-    │
-    ▼
-pandas DataFrame
-    │
-    ├──▶ KPI cards
-    ├──▶ AG Grid table  (+ CSV export)
-    ├──▶ Chart.js chart (line / bar / stacked bar / doughnut / scatter)
-    └──▶ Ollama LLM streaming analysis  (with conversation history)
+**Gawain Engine — Arasaka Edition** is a production-grade **Retrieval-Augmented Generation (RAG)** system for **SQL Server**. It translates natural-language questions into validated **T-SQL**, executes securely, and streams **KPI cards**, **interactive tables**, **charts**, and **written analysis** — all powered locally via **Ollama** (no cloud dependency) 💾🔒
+
+> **アラサカ — 安全なデータ分析** — Secure, local-first business intelligence.
+
+---
+
+## 📡 Architecture — How It Works
+
+```mermaid
+flowchart TD
+    A[🗣️ User Question] --> B[🔍 TF-IDF Schema Retrieval]
+    B -.-> C[(🏛️ SQL Server INFORMATION_SCHEMA)]
+    B --> D[🧠 Ollama LLM]
+    D -- generates --> E[📜 T-SQL Query]
+    E --> F{🛡️ SET NOEXEC ON Validation}
+    F -- fail --> G[🔧 Auto-Fix Retry]
+    G --> E
+    F -- pass --> H[⚡ SQL Server Execution]
+    H --> I[🐼 pandas DataFrame]
+    I --> J[📊 KPI Cards]
+    I --> K[🗃️ Data Grid + CSV Export]
+    I --> L[📈 Charts]
+    J & K & L --> M[🧠 Streaming Analysis]
+    M --> N[💬 NDJSON → React UI]
 ```
 
 ---
 
-## Features
+## ✨ Features
 
-| Feature | Detail |
-|---------|--------|
-| Natural language → SQL | Ollama LLM (any locally-installed model) |
-| Pre-execution validation | `SET NOEXEC ON` syntax check before hitting data |
-| Auto SQL repair | LLM re-tries on runtime error |
-| Multi-turn memory | Last 6 conversation turns sent as context |
-| Dynamic schema retrieval | TF-IDF ranks only relevant tables per question |
-| Any-database support | Works with any SQL Server DB via `DB_TABLE_FILTER` env var |
-| Multi-step planning | LLM decomposes complex questions into sub-queries |
-| Chart auto-detection | Line, bar, stacked bar, doughnut, scatter |
-| SQL editor | Edit generated SQL in-browser and re-run |
-| CSV export | One-click export from any result table |
-| Query history | SQLite log of every question + star favorites |
-| Dashboard | Pin charts/tables to a persistent dashboard (localStorage) |
-| Streaming UI | NDJSON token-by-token streaming, React + AG Grid + Chart.js |
+| 🧩 Module | 📝 Details |
+|-----------|------------|
+| **🗣️ Natural Language → SQL** | Supports any local Ollama model — `llama3.1`, `codellama`, custom finetunes |
+| **🛡️ Pre-Execution Validation** | `SET NOEXEC ON` syntax check before executing |
+| **🔧 Auto SQL Repair** | Automatic retry with error context if execution fails |
+| **🧠 Multi-Turn Memory** | Last 6 conversation turns included as context |
+| **🔍 Dynamic Schema Retrieval** | TF-IDF ranking — only relevant tables per question, scales to 1000+ tables |
+| **🏢 Any-Database Support** | `DB_TABLE_FILTER` whitelist — point at any SQL Server database |
+| **🗺️ Multi-Step Planning** | Decomposes complex questions (`vs`, `and`, `correlation`) into sub-queries |
+| **📈 Chart Auto-Detection** | Line, Bar, Stacked Bar, Doughnut, Scatter — with Arasaka palette |
+| **✏️ SQL Editor** | Edit generated SQL in-browser and re-run |
+| **⬇️ CSV Export** | One-click export from any result table |
+| **📜 Query History** | SQLite log with favorites — `アーカイブ` |
+| **📌 Dashboard** | Pin charts/tables → persistent dashboard (localStorage) |
+| **🌊 Streaming UI** | NDJSON token streaming — React + AG Grid + Chart.js |
+| **🎯 Driver Analysis** | DuckDB local extract for attribution & changepoint detection |
 
+---
 
-## Prerequisites
+## 🧰 Prerequisites
 
-| Requirement | Version | Notes |
-|-------------|---------|-------|
-| Python | 3.11+ | `python --version` |
-| Node.js | 18+ | `node --version` |
-| SQL Server | 2019+ | Express edition works |
-| ODBC Driver 17 | for SQL Server | [Download](https://learn.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server) |
-| Ollama | latest | [ollama.com](https://ollama.com) |
+| 🧪 Requirement | 📦 Version | 📝 Notes |
+|---------------|-----------|----------|
+| **Python** | `3.11+` | `python --version` |
+| **Node.js** | `18+` | `node --version` |
+| **SQL Server** | `2019+` | Express edition works |
+| **ODBC Driver 17** | for SQL Server | [Download](https://learn.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server) |
+| **Ollama** | latest | [ollama.com](https://ollama.com) |
+| **RAM** | `8GB+` | 16GB recommended for LLMs |
 
+---
 
-## 1. SQL Server Setup
+## 🗄️ 1️⃣ SQL Server Setup
 
-### Option A — AdventureWorksDW2019 (default demo database)
+### 🅰️ Option A — AdventureWorksDW2019 (Demo Database) 🚲
 
-1. Download the `.bak` file from Microsoft:
+Default demo — bicycle & accessories, 2010-2014, $29.4M / 60K orders.
+
+1. **Download** `.bak`:
    ```
    https://github.com/Microsoft/sql-server-samples/releases/tag/adventureworks
    ```
-   Get: `AdventureWorksDW2019.bak`
-
-2. Restore in SQL Server Management Studio (SSMS):
+2. **Restore** in SSMS:
    ```sql
    RESTORE DATABASE AdventureWorksDW2019
    FROM DISK = 'C:\path\to\AdventureWorksDW2019.bak'
@@ -76,247 +87,296 @@ pandas DataFrame
         MOVE 'AdventureWorksDW2019_log' TO 'C:\Data\AdventureWorksDW2019_log.ldf',
         REPLACE;
    ```
-
-3. Verify:
+3. **Verify** 🧪:
    ```sql
    USE AdventureWorksDW2019;
-   SELECT COUNT(*) FROM dbo.FactInternetSales;  -- should return 60398
+   SELECT COUNT(*) FROM dbo.FactInternetSales;  -- 60398 ✅
    ```
 
-### Option B — Your own database
+### 🅱️ Option B — Your Own Database
 
-Point `DB_DATABASE` in `.env` at any SQL Server database.
-Optionally set `DB_TABLE_FILTER` to a comma-separated list of tables to include in the schema context (leave empty to include all).
+Set `DB_DATABASE` in `.env` to any SQL Server DB.  
+Optionally set `DB_TABLE_FILTER` to comma-separated tables — leave empty for all tables 🏢
 
+---
 
-## 2. Ollama Setup
+## 🧠 2️⃣ Ollama Setup
 
 ```bash
-# Install Ollama (Windows — download installer from ollama.com)
-# Then pull a model:
-ollama pull llama3.1:latest      # recommended ~5GB
-# or a smaller/faster option:
-ollama pull llama3.2:3b          # ~2GB, faster on CPU
-# or a SQL-focused option:
-ollama pull codellama:13b        # good at code/SQL
+# Install from ollama.com, then:
 
-# Verify it's running
+ollama pull llama3.1:latest      # 🟢 Recommended ~5GB
+ollama pull llama3.2:3b          # ⚡ Light ~2GB — fast on CPU
+ollama pull codellama:13b        # 💻 Code-specialized
+
 ollama list
-ollama serve                     # start the server (auto-starts on Windows after install)
+ollama serve                     # auto-starts on Windows
+curl http://localhost:11434/api/tags
 ```
 
-> To use a custom fine-tuned model see the [Training Guide](train/README.md).
+> 💡 For custom-tuned models, see **Train/README.md** 🧬
 
+---
 
-## 3. Python Backend Setup
+## 🐍 3️⃣ Python Backend Setup
 
 ```bash
-# Clone / navigate to project root
-cd "gawain-engine"
+cd gawain-engine
 
-# Create virtual environment
 python -m venv .venv
 .venv\Scripts\activate          # Windows
 # source .venv/bin/activate     # Linux/Mac
 
-# Install dependencies
 pip install -r requirements.txt
 ```
 
-### Configure `.env`
-
-Copy the template and fill in your values:
+### ⚙️ Configure `.env`
 
 ```bash
 copy .env.example .env          # Windows
 # cp .env.example .env          # Linux/Mac
 ```
 
-Edit `.env`:
-
 ```ini
-# SQL Server — use your actual server\instance name
-DB_SERVER=YOUR_PC\MSSQLSERVER2019
+# 🏛️ SQL Server
+DB_SERVER=YOUR_PC\SQLEXPRESS
 DB_DATABASE=AdventureWorksDW2019
 DB_DRIVER=ODBC Driver 17 for SQL Server
 
-# Windows auth (recommended) — leave DB_USER and DB_PASSWORD blank
+# 🔐 Windows Auth — leave blank
 DB_USER=
 DB_PASSWORD=
 
-# SQL auth — fill both if not using Windows auth
-# DB_USER=sa
-# DB_PASSWORD=your_password
-
-# Ollama
+# 🧠 Ollama
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=llama3.1:latest
 
-# Optional: comma-separated table whitelist (empty = all tables)
+# 🎯 Optional whitelist
 DB_TABLE_FILTER=
+
+# 📊 Driver Analysis
+STAR_FACT=dbo.FactInternetSales
+STAR_MEASURES=SalesAmount,OrderQuantity,TotalProductCost
 ```
 
+---
 
-## 4. Frontend Setup
+## 🎨 4️⃣ Frontend Setup — アラサカデザイン
+
+Arasaka theme: dark `NIGHT_OPS` 🌑 `#05070d` + red `#ff003c`, and light `DAY_PROTOCOL` ☀️ — toggle in header `◑ / ◐`
 
 ```bash
 cd frontend
 npm install
-npm run build          # compiles React → ../static/ (served by FastAPI)
+npm run build          # builds to ../static/ — 295KB CSS
 cd ..
 ```
 
-For live-reload development (optional):
+**Dev mode with HMR** 🖥️:
 ```bash
-# Terminal 1 — backend
+# Terminal 1 — Backend :8000
+.venv\Scripts\activate
 python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
-# Terminal 2 — frontend dev server (http://localhost:5173)
-cd frontend && npm run dev
+# Terminal 2 — Frontend :5173
+cd frontend
+npm run dev
 ```
 
+---
 
-## 5. Running the Application
+## 🚀 5️⃣ Running the Application
 
-### Quick start (Windows)
+### ⚡ Quick Start (Windows)
 
 ```bat
 start.bat
 ```
 
-### Manual start
+### 🛠️ Manual Start
 
 ```bash
-# Activate venv first
 .venv\Scripts\activate
-
-# Start server
 python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Open **http://localhost:8000** in your browser.
+Open **http://localhost:8000** 🌐 — you should see ⬢ ARASAKA header with triskele emblem.
 
+---
 
-## 6. Verifying Everything Works
+## 🧪 6️⃣ Verification
 
 ```bash
-# Check backend health
 curl http://localhost:8000/api/health
-# Expected: {"ollama": true, "database": true}
+# → {"ollama": true, "database": true} ✅
 
-# Run integration test
 python test_pipeline.py
 
-# Or just open the app and type:
-# "Show me total revenue by year"
+# Try in UI:
+# "Show total revenue by year"
+# "Top 10 customers by total spend"
 ```
 
+**If you see old blue UI:**
+```bash
+cd frontend
+npm run build
+# Browser: Ctrl+Shift+R
+# Console: localStorage.clear(); location.reload();
+```
 
-## 7. Project Structure
+---
+
+## 🗂️ 7️⃣ Project Structure
 
 ```
 gawain-engine/
-│
-├── main.py                  # FastAPI entry point
+├── main.py                  # 🚪 FastAPI entry — serves static + API
 ├── requirements.txt
-├── start.bat                # Windows one-click launcher
-├── .env                     # Your local config (gitignored)
-├── .env.example             # Template — commit this
+├── start.bat                # ⚡ Windows launcher
+├── .env / .env.example
 │
-├── config/                  # All configuration in one place
-│   ├── settings.py          # DB, Ollama, LLM params, paths, keyword sets
-│   └── prompts.py           # LLM system prompt (edit to change AI behaviour)
+├── config/                  # ⚙️ Configuration
+│   ├── settings.py          # DB, Ollama, chart colors — アラサカ設定
+│   └── prompts.py           # 🧠 System prompt
 │
-├── server/                  # Python backend logic
-│   ├── routes.py            # All HTTP endpoints + streaming chat handler
-│   ├── llm.py               # Ollama calls: SQL generation, planning, analysis
-│   ├── database.py          # SQL execution, schema discovery, chart detection
-│   ├── history.py           # SQLite query history
-│   └── schema_retrieval.py  # TF-IDF schema relevance ranking
+├── server/                  # 🧠 Backend
+│   ├── routes.py            # 🛣️ Endpoints + NDJSON streaming
+│   ├── llm.py               # 🤖 Ollama SQL generation & analysis
+│   ├── database.py          # 🗄️ Execution, schema, chart detection
+│   ├── history.py           # 📜 SQLite history
+│   ├── drivers.py           # 🎯 DuckDB driver analysis
+│   └── schema_retrieval.py  # 🔍 TF-IDF ranking
 │
-├── frontend/                # React + TypeScript source
+├── frontend/                # 🎨 React + TypeScript — Arasaka theme
 │   └── src/
 │       ├── App.tsx
+│       ├── App.css          # 🔴 Arasaka design system — 900+ lines
 │       ├── components/
+│       │   ├── Header.tsx           # 🏢 Triskele emblem + arasaka wordmark — アラサカ
 │       │   ├── ChatInput.tsx
-│       │   ├── Dashboard.tsx      # Pinned charts/tables
-│       │   ├── DataGrid.tsx       # AG Grid wrapper + CSV export
-│       │   ├── Header.tsx
-│       │   ├── HistoryPanel.tsx   # Query history sidebar
-│       │   ├── MessageBubble.tsx  # Renders all block types
-│       │   └── TrendChart.tsx     # Chart.js (line/bar/doughnut/scatter/stacked)
-│       ├── hooks/
-│       │   ├── useChat.ts         # Streaming NDJSON parser + session
-│       │   ├── useHealth.ts
-│       │   └── useHistory.ts
-│       └── types.ts
+│       │   ├── Dashboard.tsx        # 📌 Pinned assets
+│       │   ├── DataGrid.tsx         # 🗃️ Grid + CSV + Train
+│       │   ├── HistoryPanel.tsx     # 📜 History
+│       │   ├── MessageBubble.tsx
+│       │   └── TrendChart.tsx       # 📈 Charts
+│       └── hooks/
 │
-├── static/                  # Production build output (gitignored, from npm run build)
-├── storage/                 # SQLite history DB lives here (gitignored)
+├── static/                  # 📦 Build output (gitignored)
+├── storage/                 # 💾 history.db + analytics.duckdb (gitignored)
 │
-└── train/                   # Model training tools
-    ├── README.md            # Full training guide
-    ├── Modelfile            # Ollama custom model (prompt + params)
-    ├── prepare_data.py      # Generates training pairs from your live DB
-    ├── example_pairs.jsonl  # Seed Q&A pairs
-    ├── finetune.bat         # Windows llama.cpp fine-tuning script
-    └── finetune.sh          # Linux/Mac llama.cpp fine-tuning script
+└── train/                   # 🧬 Model training
+    ├── README.md
+    ├── Modelfile
+    ├── prepare_data.py
+    └── finetune scripts
 ```
 
+---
 
-## 8. API Reference
+## 🔌 8️⃣ API Reference
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET`  | `/api/health` | Ollama + DB connectivity status |
-| `GET`  | `/api/schema` | Full schema context string |
-| `POST` | `/api/schema/refresh` | Clear schema cache and reload |
-| `POST` | `/api/chat` | Main streaming chat (NDJSON) |
-| `POST` | `/api/chat/run-sql` | Execute user-edited SQL (NDJSON) |
-| `GET`  | `/api/history` | List query history (SQLite) |
-| `POST` | `/api/history/favorite` | Toggle favorite `{id: number}` |
-| `DELETE` | `/api/history/{id}` | Delete history entry |
+| `GET` | `/api/health` | 🟢 Connectivity status — Ollama + DB |
+| `GET` | `/api/schema` | 📖 Full schema context |
+| `POST` | `/api/schema/refresh` | 🔄 Reload schema cache |
+| `POST` | `/api/chat` | 💬 Main streaming chat (NDJSON) |
+| `POST` | `/api/chat/run-sql` | ✏️ Execute edited SQL |
+| `GET` | `/api/history` | 📜 List history |
+| `POST` | `/api/history/favorite` | ⭐ Toggle favorite |
+| `DELETE` | `/api/history/{id}` | 🗑️ Delete entry |
+| `GET` | `/api/drivers/status` | 🎯 Driver extract status |
+| `POST` | `/api/drivers/rebuild` | 🔧 Rebuild extract |
+| `POST` | `/api/train/save` | 🧬 Save training pair |
 
-### Chat stream events
+### 🌊 Stream Events (NDJSON)
 
 ```
-session  → string       session UUID (first event)
-step     → string       progress message
-sql      → string       generated T-SQL
-kpi      → [{label, value}]   headline metric cards
-grid     → {columns, rows, total, _title?}   AG Grid data
-chart    → {type, title, labels, datasets}   Chart.js config
-token    → string       streamed analysis text chunk
-error    → string       error message
-done     → ""           end of stream
+session → string       🆔 Session UUID
+step    → string       🔄 Progress
+sql     → string       📜 Generated T-SQL
+kpi     → [{label, value}]  📊 KPI cards
+grid    → {columns, rows, total}  🗃️ Table data
+chart   → {type, title, labels, datasets}  📈 Chart config
+token   → string       ✍️ Analysis token
+error   → string       💥 Error
+done    → ""           ✅ End
 ```
 
+---
 
-## 9. Configuration Reference
+## ⚙️ 9️⃣ Configuration Reference
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DB_SERVER` | `IMPOSSIBLEISNOT\MSSQLSERVER2019` | SQL Server instance |
+| `DB_SERVER` | `IMPOSSIBLEISNOT\MSSQLSERVER2019` | SQL Server instance | 
 | `DB_DATABASE` | `AdventureWorksDW2019` | Database name |
-| `DB_DRIVER` | `ODBC Driver 17 for SQL Server` | ODBC driver name |
-| `DB_USER` | _(empty)_ | SQL auth user (blank = Windows auth) |
+| `DB_DRIVER` | `ODBC Driver 17 for SQL Server` | ODBC driver |
+| `DB_USER` | _(empty)_ | SQL auth user — blank = Windows Auth |
 | `DB_PASSWORD` | _(empty)_ | SQL auth password |
-| `DB_TABLE_FILTER` | _(empty)_ | Comma-separated table whitelist (empty = all) |
-| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL |
-| `OLLAMA_MODEL` | `llama3.1:latest` | Model to use for all LLM calls |
+| `DB_TABLE_FILTER` | _(empty)_ | Table whitelist |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama URL |
+| `OLLAMA_MODEL` | `llama3.1:latest` | Model name |
+| `STAR_FACT` | `dbo.FactInternetSales` | Fact table for driver analysis |
+| `STAR_MEASURES` | `SalesAmount,OrderQuantity,TotalProductCost` | Measures |
 
+---
 
-## 10. Troubleshooting
+## 🔧 🔟 Troubleshooting — アラサカサポート
 
-### `DB Error` badge in the UI
+### 🔴 `DB Error` / `DB: OFFLINE`
+- Check `DB_SERVER` in `.env` — e.g. `YOUR_PC\SQLEXPRESS`
+- Can you connect via SSMS?
+- Ensure SQL Server Browser service running + port 1433 allowed
+- `curl http://localhost:8000/api/health` → `database: false` confirms DB issue
 
-### `Ollama Offline` badge
+### 🔴 `Ollama Offline` / `NEURAL: OFFLINE`
+- Run `ollama serve` in separate terminal
+- `ollama list` — model exists?
+- Check `OLLAMA_BASE_URL` = `http://localhost:11434`
+- `curl http://localhost:11434/api/tags` should list models
 
-### SQL generation is wrong or slow
+### 🐌 Wrong or slow SQL generation
+- **Slow:** Use smaller model `llama3.2:3b` or enable GPU
+- **Wrong:** 
+  - Review `config/prompts.py` — does it match your DB?
+  - Narrow context via `DB_TABLE_FILTER`
+  - In UI: `EDIT // RE-EXECUTE` → correct → `◈ TRAIN_CORE` to save example
+  - See train guide for finetuning
 
-### Frontend not loading
+### 🎨 Shows old Barclays blue `#00AEEF` instead of Arasaka red
+- Frontend is serving old `static/`:
+  ```bash
+  cd frontend
+  npm run build
+  # Browser: Ctrl+Shift+R
+  # Console: localStorage.clear(); location.reload();
+  ```
+- Dev mode avoids this: `npm run dev` → `:5173`
 
+### 🟥 Logo cut off / incomplete circle
+- ViewBox must be padded with `overflow:visible`
+- In `Header.tsx`: `viewBox="-80 -60 1184 540"` + `style={{overflow:"visible"}}`
+- In `App.css`: `.arasaka-mark-auth { flex:0 0 52px; overflow:visible; }` + `.arasaka-emblem-svg { transform:scale(1.75); }`
+- To fit header: `width:42px` + `scale(1.0)` = 42px perfect fit
 
-## 11. Custom Model Training
+---
 
-See **[train/README.md](train/README.md)** for:
+## 🧬 1️⃣1️⃣ Model Training — アラサカ学習
+
+Want Gawain to understand *your* schema, not just AdventureWorks?
+
+See **[train/README.md](train/README.md)**:
+- 🚀 **5-min Modelfile** — no GPU, bake prompt + few-shots
+- 🏋️ **1-4hr LoRA finetune** — llama.cpp, learns your schema deeply
+- 🧪 **Data prep** — generate 50-200 Q&A pairs from live DB
+
+---
+
+## 📄 Credits — アラサカクレジット
+
+- **Design:** Arasaka theme — red `#ff003c` + black `#05070d`, authentic triskele emblem traced from Cyberpunk 2077 — アラサカ
+- **Stack:** FastAPI + Ollama + SQL Server + React + AG Grid + Chart.js + DuckDB
+- **Fonts:** JetBrains Mono + Orbitron + Rajdhani (with アラサカ)
+- **Principle:** Secure, local-first, no cloud dependency 🔒💾

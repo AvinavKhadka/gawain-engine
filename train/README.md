@@ -1,88 +1,100 @@
-# Gawain — Model Training Guide
+# 🧬 GAWAIN ENGINE — Model Training Guide
+### 🏋️ Customizing LLM for Your Database — アラサカ学習
+### アラサカ — モデル学習ガイド
 
-Two approaches to customize the LLM for your SQL database:
+Two proven approaches to make Gawain understand *your* SQL schema, not just AdventureWorks:
 
-| Approach | GPU needed | Time | Quality gain |
-|----------|-----------|------|-------------|
-| **Modelfile** (Ollama) | No | ~5 minutes | Medium — better prompting |
-| **LoRA fine-tuning** (llama.cpp) | Recommended | 1–4 hours | High — model learns your schema |
+| 🛣️ Approach | 🎮 GPU Needed? | ⏱️ Time | 📈 Quality Gain | 🧠 Best For |
+|-------------|---------------|---------|----------------|-------------|
+| **📄 Modelfile** (Ollama) | ❌ No | ~5 min ⚡ | **Medium** | Quick improvement, no hardware |
+| **🔥 LoRA Fine-tuning** (llama.cpp) | ✅ Recommended 8GB+ | 1–4h 🏋️ | **High** | Production, domain-specific DB |
 
 ---
 
-## Approach 1: Ollama Modelfile (Quick Start)
+## 🚀 Approach 1: Ollama Modelfile — Quick Start
 
-A Modelfile bakes your system prompt and few-shot examples directly into the model.
-No training. No GPU. Works immediately.
+A Modelfile bakes your **system prompt + few-shot examples** directly into the model. No GPU. No training. Works immediately.
 
-### Step 1 — Generate training examples from your live database
+### 🧪 Step 1 — Generate Examples from Live DB
 
 ```bash
 # From project root with venv active
-cd ..
 python train/prepare_data.py
 
-# This creates: train/data/examples.jsonl
-# Edit it to add, remove, or correct examples before building the model
+# Creates:
+# train/data/examples.jsonl
 ```
 
-### Step 2 — Review and edit examples
+- Connects to SQL Server via `.env`
+- Discovers fact/dimension tables
+- Generates realistic Q&A pairs with correct JOINs
 
-Open `train/data/examples.jsonl`. Each line is one Q&A pair:
+### ✏️ Step 2 — Review & Edit — Quality > Quantity
+
+Open `train/data/examples.jsonl`. Each line:
+
 ```json
-{"question": "Show total revenue by year", "sql": "SELECT dd.CalendarYear..."}
+{"question": "Show total revenue by year", "sql": "SELECT dd.CalendarYear, SUM(fis.SalesAmount) AS Revenue FROM dbo.FactInternetSales fis JOIN dbo.DimDate dd ON fis.OrderDateKey = dd.DateKey GROUP BY dd.CalendarYear ORDER BY dd.CalendarYear"}
 ```
 
-Add your own domain-specific pairs. More examples = more accurate model.
-Aim for **50–200 pairs** covering the questions your users actually ask.
+**Guidelines:**
+- 🎯 **50–200 pairs** covering real user questions
+- 🧹 Remove incorrect pairs
+- ➕ Add domain-specific: profit margin, territory vs region, customer segments
+- ✅ Test every SQL in SSMS before keeping
 
-### Step 3 — Build the custom Ollama model
+**Good additional examples:**
+```json
+{"question": "Why did Bikes revenue drop 12% in 2013 vs 2012?", "sql": "SELECT dpc.EnglishProductCategoryName, dd.CalendarYear, SUM(fis.SalesAmount) AS Revenue FROM dbo.FactInternetSales fis JOIN dbo.DimDate dd ON fis.OrderDateKey=dd.DateKey JOIN dbo.DimProduct dp ON fis.ProductKey=dp.ProductKey JOIN dbo.DimProductSubcategory dps ON dp.ProductSubcategoryKey=dps.ProductSubcategoryKey JOIN dbo.DimProductCategory dpc ON dps.ProductCategoryKey=dpc.ProductCategoryKey WHERE dpc.EnglishProductCategoryName='Bikes' AND dd.CalendarYear IN (2012,2013) GROUP BY dpc.EnglishProductCategoryName, dd.CalendarYear ORDER BY dd.CalendarYear"}
+{"question": "Top 5 products by gross margin in 2013", "sql": "SELECT TOP 5 dp.EnglishProductName, SUM(fis.SalesAmount - fis.TotalProductCost) AS GrossProfit FROM dbo.FactInternetSales fis JOIN dbo.DimProduct dp ON fis.ProductKey=dp.ProductKey JOIN dbo.DimDate dd ON fis.OrderDateKey=dd.DateKey WHERE dd.CalendarYear=2013 GROUP BY dp.EnglishProductName ORDER BY GrossProfit DESC"}
+```
+
+### 🏗️ Step 3 — Build Custom Model
 
 ```bash
-# From project root
 ollama create gawain-sql -f train/Modelfile
 
-# Test it
 ollama run gawain-sql "Show me revenue by product category"
 
-# Update .env to use it
-# OLLAMA_MODEL=gawain-sql
+# Use it in project:
+# .env → OLLAMA_MODEL=gawain-sql
+python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### Step 4 — Iterate
+Modelfile sets system prompt, embeds few-shot examples, locks `temperature 0.1` for deterministic SQL.
 
-After testing, edit `train/Modelfile` to:
-- Add more `MESSAGE` few-shot examples
-- Tighten the `SYSTEM` prompt with domain rules
-- Adjust `PARAMETER temperature` (lower = more deterministic SQL)
+### 🔄 Step 4 — Iterate
 
-Then rebuild: `ollama create gawain-sql -f train/Modelfile`
+1. Wrong SQL in UI? Add corrected pair
+2. Need stricter JOIN rules? Edit `SYSTEM` in Modelfile — e.g., "Always JOIN via DimProductSubcategory"
+3. Too creative? Lower `temperature` to `0.0`
+4. Rebuild: `ollama create gawain-sql -f train/Modelfile` — ~10 sec ⚡
 
 ---
 
-## Approach 2: llama.cpp LoRA Fine-tuning
+## 🔥 Approach 2: LoRA Fine-tuning — Deep Learning
 
-This actually adjusts the model's weights to deeply learn your schema and SQL patterns.
-Produces the highest quality results for domain-specific databases.
+Adjusts **model weights** to deeply learn your schema. Highest quality for custom databases.
 
-### Prerequisites
+### 📋 Prerequisites
 
-- **GPU**: NVIDIA with 8GB+ VRAM recommended (RTX 3060 or better)
-  - CPU-only works but takes 10–20× longer
-- **Disk**: ~15GB free (base model + training artefacts)
-- **RAM**: 16GB+ recommended
+| 🧩 | Requirement | 📝 Details |
+|----|-------------|-----------|
+| **🎮 GPU** | NVIDIA 8GB+ VRAM | RTX 3060+ recommended — CPU-only is 10–20× slower |
+| **💾 Disk** | ~15GB free | Base model + artefacts + output |
+| **🧠 RAM** | 16GB+ | 32GB recommended |
+| **🐍 Python** | 3.11+ | With `huggingface_hub` |
 
-### Step 1 — Install llama.cpp
+### 🛠️ Step 1 — Install llama.cpp
 
-**Windows (PowerShell):**
+**Windows PowerShell:**
 ```powershell
 git clone https://github.com/ggerganov/llama.cpp
 cd llama.cpp
-
-# CPU only
+# CPU:
 cmake -B build -DGGML_NATIVE=ON
 cmake --build build --config Release -j8
-
-# NVIDIA GPU (recommended)
+# GPU:
 cmake -B build -DGGML_CUDA=ON
 cmake --build build --config Release -j8
 ```
@@ -94,111 +106,143 @@ make -j8
 # GPU: make GGML_CUDA=1 -j8
 ```
 
-Copy the `llama.cpp/` folder path — you'll need it in the next step.
+Save the `llama.cpp/` path — needed for finetune scripts.
 
-### Step 2 — Download a base model (GGUF format)
+### ⬇️ Step 2 — Download Base Model (GGUF)
 
 ```bash
 pip install huggingface_hub
 
-# Recommended: Llama-3.1-8B (good balance of size and quality)
-huggingface-cli download \
-  bartowski/Meta-Llama-3.1-8B-Instruct-GGUF \
-  Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf \
-  --local-dir train/models/
+# 🟢 Recommended: Llama-3.1-8B
+huggingface-cli download bartowski/Meta-Llama-3.1-8B-Instruct-GGUF Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf --local-dir train/models/
 
-# Smaller/faster: Llama-3.2-3B (good for CPU or limited VRAM)
-huggingface-cli download \
-  bartowski/Llama-3.2-3B-Instruct-GGUF \
-  Llama-3.2-3B-Instruct-Q4_K_M.gguf \
-  --local-dir train/models/
+# ⚡ Smaller: Llama-3.2-3B — good for limited VRAM
+huggingface-cli download bartowski/Llama-3.2-3B-Instruct-GGUF Llama-3.2-3B-Instruct-Q4_K_M.gguf --local-dir train/models/
 ```
 
-### Step 3 — Generate and review training data
+### 🧪 Step 3 — Generate Training Data
 
 ```bash
-# Generate Q&A pairs from your live database
 python train/prepare_data.py
 
-# This produces train/data/examples.jsonl
-# Review and add your own examples (aim for 100+ total)
+# Optional: pull real user questions from history DB:
+python train/prepare_data.py --from-history
+# Reads storage/history.db → converts to training format
 ```
 
-Format of `examples.jsonl`:
-```json
-{"question": "Show total revenue by year", "sql": "SELECT dd.CalendarYear, SUM(fis.SalesAmount) AS Revenue FROM dbo.FactInternetSales fis JOIN dbo.DimDate dd ON fis.OrderDateKey = dd.DateKey GROUP BY dd.CalendarYear ORDER BY dd.CalendarYear"}
-```
+**Aim for 100+ pairs for LoRA** — include hard examples: multi-JOIN, CASE WHEN, YoY comparisons.
 
-### Step 4 — Run fine-tuning
+### 🏋️ Step 4 — Run Fine-tuning
 
 **Windows:**
 ```bat
-# Edit finetune.bat first — set LLAMA_DIR to your llama.cpp path
+# Edit finetune.bat → set LLAMA_DIR to your llama.cpp path
 train\finetune.bat
 ```
 
 **Linux/Mac:**
 ```bash
-# Edit finetune.sh first — set LLAMA_DIR to your llama.cpp path
+# Edit finetune.sh → set LLAMA_DIR
 chmod +x train/finetune.sh
 ./train/finetune.sh
 ```
 
-Both scripts will:
-1. Convert `examples.jsonl` → training format
-2. Run LoRA fine-tuning (~1–4 hours depending on GPU)
-3. Merge LoRA adapter into a new GGUF file
+Scripts:
+1. 📄 Convert `examples.jsonl` → training format
+2. 🏋️ Run LoRA — 1–4 hours
+3. 🔗 Merge adapter → `train/models/gawain-finetuned.gguf`
 
-Output: `train/models/gawain-finetuned.gguf`
+**Watch loss:** should drop from ~2.5 → ~0.8. If ~0.1, you're overfitting — add more varied data.
 
-### Step 5 — Import into Ollama
+### 📦 Step 5 — Import into Ollama
 
 ```bash
-# Build Ollama model from fine-tuned weights
 ollama create gawain-finetuned -f train/Modelfile.finetuned
 
-# Test it
 ollama run gawain-finetuned "Why did Bikes revenue drop in 2013?"
 
-# Update project .env
-# OLLAMA_MODEL=gawain-finetuned
+# .env → OLLAMA_MODEL=gawain-finetuned
+python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 ---
 
-## Tips for Better Training Data
+## 🎯 Tips for Better Training Data — アラサカ品質基準
 
-**Coverage**: Include examples for every major query pattern your users need:
-- Aggregations (SUM, COUNT, AVG)
-- Time-series (GROUP BY year/month/quarter)
-- Joins (multiple tables)
-- Filters (WHERE clauses)
-- Rankings (TOP N, ORDER BY)
-- Comparisons (CASE WHEN, year-over-year)
+### 📊 Coverage — Every Query Pattern
 
-**Quality over quantity**: 50 excellent examples beat 500 sloppy ones.
-Test every SQL in your database before adding it to training data.
+| 🔍 Pattern | 📝 Example | 🧩 SQL Feature |
+|------------|-----------|----------------|
+| **Aggregations** | "Total revenue, orders" | `SUM, COUNT, AVG` |
+| **Time-series** | "Monthly revenue 2013" | `GROUP BY year/month/quarter` |
+| **Joins** | "Revenue by category" | 2-JOIN via Subcategory |
+| **Filters** | "Bikes in Germany 2013" | `WHERE` |
+| **Rankings** | "Top 10 customers" | `TOP N, ORDER BY` |
+| **Comparisons** | "2012 vs 2013 by territory" | `CASE WHEN, YoY` |
+| **Segmentation** | "Sales by occupation" | `EnglishOccupation` |
 
-**Correct errors**: If the model generates wrong SQL, add a corrected example.
-Run `python train/prepare_data.py --from-history` to pull recent questions
-and generated SQL from the app's history database as starting points.
+### ✅ Quality > Quantity
 
-**Domain rules**: Add example pairs that demonstrate your specific constraints:
-- Which columns to use for dates
-- Required JOINs (e.g., always go via DimProductSubcategory)
-- Preferred column aliases
+**50 excellent examples beat 500 sloppy ones** 💎
+
+- Test every SQL in SSMS
+- Use exact column names — no hallucinations
+- Keep questions natural, how users ask
+
+### 🔧 Correct Errors
+
+If model generates wrong SQL:
+
+1. In UI: `EDIT // RE-EXECUTE` → fix → `◈ TRAIN_CORE` to save
+2. Or add corrected pair to `examples.jsonl`
+3. Run `python train/prepare_data.py --from-history` to pull history as starters
+
+### 📜 Domain Rules
+
+Add pairs that teach non-obvious rules:
+
+```json
+{"question": "Sales by product name", "sql": "SELECT dp.EnglishProductName ... -- EnglishProductName NOT Name"}
+{"question": "Customer segment", "sql": "SELECT dc.EnglishOccupation ... -- EnglishOccupation NOT CustomerSegment"}
+{"question": "Filter 2013", "sql": "SELECT ... WHERE dd.CalendarYear=2013 -- use dim date, NEVER GETDATE()"}
+```
 
 ---
 
-## File Reference
+## 📂 File Reference — アーカイブ
 
-| File | Purpose |
-|------|---------|
-| `Modelfile` | Ollama model config (system prompt + few-shot examples) |
-| `Modelfile.finetuned` | Ollama model config pointing to fine-tuned GGUF |
-| `prepare_data.py` | Generates training pairs from your live SQL Server database |
-| `example_pairs.jsonl` | Seed examples — add your own here |
-| `finetune.bat` | Windows llama.cpp training script |
-| `finetune.sh` | Linux/Mac llama.cpp training script |
-| `data/` | Generated training files (gitignored) |
-| `models/` | Downloaded base models + fine-tuned outputs (gitignored) |
+| 📄 File | 🎯 Purpose | ✏️ Edit? |
+|---------|-----------|----------|
+| `Modelfile` | Ollama config — system prompt + few-shots + params | ✅ Add MESSAGES |
+| `Modelfile.finetuned` | Config pointing to finetuned GGUF | ✅ Update path |
+| `prepare_data.py` | Generates pairs from live DB + history | ✅ Can tweak |
+| `example_pairs.jsonl` | 🌱 Seed examples — safe to commit | ✅ Add yours |
+| `finetune.bat` / `.sh` | Training scripts — set `LLAMA_DIR` | ✅ Set path |
+| `data/` | Generated `examples.jsonl` (gitignored) | Generated |
+| `models/` | Base + finetuned models (gitignored, ~15GB) | Downloaded |
+| `../storage/history.db` | App history — source for `--from-history` | Source |
+
+---
+
+## 🧠 Which Level Should You Use? — アラサカレベル
+
+| Level | Method | Time | GPU | Accuracy | When |
+|-------|--------|------|-----|----------|------|
+| **LVL 1** | Base model | 0 min | No | ⭐⭐ | Demo |
+| **LVL 2** | Modelfile + 50 ex | 5 min | No | ⭐⭐⭐ | Most teams |
+| **LVL 3** | Modelfile + 200 ex | 30 min | No | ⭐⭐⭐½ | Complex schema |
+| **LVL 4** | LoRA + 100 ex | 2h | Yes | ⭐⭐⭐⭐ | Production |
+| **LVL 5** | LoRA + 500 ex + Modelfile wrapper | 4h | Yes | ⭐⭐⭐⭐⭐ | Maximum accuracy — アラサカ最高品質 |
+
+---
+
+## 🚀 Next Steps — アラサカ次のステップ
+
+1. `prepare_data.py` → generate examples
+2. Edit `examples.jsonl` → 100+ quality pairs
+3. `ollama create gawain-sql -f train/Modelfile` → test
+4. If needed: finetune → `gawain-finetuned`
+5. `.env` → `OLLAMA_MODEL=gawain-...`
+6. Restart backend → test in UI: `QUARTERLY_REVENUE_TREND 2010→2014`
+
+Good luck — アラサカはあなたと共にあります 🏢
