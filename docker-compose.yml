@@ -1,0 +1,93 @@
+# ⬢ ARASAKA // GAWAIN ENGINE — Docker Compose
+# Full stack: app + ollama + optional mssql
+# アラサカ — ドッカーコンポーズ
+# Usage:
+#   1. cp .env.example .env  and edit DB_SERVER
+#   2. docker compose up --build -d
+#   3. open http://localhost:8000
+#   4. logs: docker compose logs -f app / ollama
+
+services:
+  # 🧠 Ollama — Local LLM neural node — lenient healthcheck
+  ollama:
+    image: ollama/ollama:latest
+    container_name: arasaka-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    # GPU support — uncomment if you have NVIDIA + nvidia-container-toolkit
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  # 🚀 Main App — FastAPI + built React static — lenient, no hard dependency
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: arasaka-gawain
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      # Override Ollama URL to use internal docker DNS — app can reach ollama service
+      - OLLAMA_BASE_URL=http://ollama:11434
+      # If your SQL Server is on host machine (Windows), use host.docker.internal
+      # DB_SERVER will still come from .env, but you can override here:
+      # - DB_SERVER=host.docker.internal\SQLEXPRESS,1433
+      - PYTHONUNBUFFERED=1
+    volumes:
+      # Persist history + DuckDB extract outside container
+      - ./storage:/app/storage
+      # Optional: mount .env live
+      # - ./.env:/app/.env:ro
+    depends_on:
+      - ollama
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  # 🗄️ Optional: Local SQL Server for testing — AdventureWorksDW2019
+  # Uncomment this whole block if you want a local SQL Server inside Docker
+  # Then restore .bak manually via sqlcmd or SSMS
+  # mssql:
+  #   image: mcr.microsoft.com/mssql/server:2022-latest
+  #   container_name: arasaka-mssql
+  #   environment:
+  #     ACCEPT_EULA: "Y"
+  #     SA_PASSWORD: "YourStrong!Passw0rd123"
+  #     MSSQL_PID: "Developer"
+  #   ports:
+  #     - "1433:1433"
+  #   volumes:
+  #     - mssql_data:/var/opt/mssql
+  #     - ./backups:/backups  # place AdventureWorksDW2019.bak here
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$${SA_PASSWORD}" -Q "SELECT 1" -C || exit 1
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 10
+
+volumes:
+  ollama_data:
+    name: arasaka_ollama_data
+  # mssql_data:
+  #   name: arasaka_mssql_data

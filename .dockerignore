@@ -1,0 +1,55 @@
+# GAWAIN ENGINE — Docker ignore
+# Ignore files and directories that should not be included in the Docker image
+
+# Node
+frontend/node_modules
+frontend/dist
+frontend/.vite
+node_modules
+npm-debug.log
+
+# Python
+.venv
+venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.mypy_cache
+.coverage
+
+# Build outputs — will be rebuilt inside Docker
+static/
+# But keep static/.gitkeep if you have one
+
+# Data — keep empty, mount as volume
+storage/*.db
+storage/*.duckdb
+storage/*.log
+storage/*.sqlite
+
+# Env — don't bake secrets, use docker-compose env_file
+.env
+*.env.local
+
+# Git / OS
+.git
+.gitignore
+.DS_Store
+Thumbs.db
+
+# Train large artefacts
+train/models/
+train/data/
+train/__pycache__
+
+# Logs
+*.log
+logs/
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
