@@ -2,7 +2,7 @@
 # Full stack: app + ollama + optional mssql
 # アラサカ — ドッカーコンポーズ
 # Usage:
-#   1. cp .env.example .env  and edit DB_SERVER
+#   1. cp .env.docker.example .env  and edit DB_SERVER / DB_USER / DB_PASSWORD
 #   2. docker compose up --build -d
 #   3. open http://localhost:8000
 #   4. logs: docker compose logs -f app / ollama
@@ -18,7 +18,8 @@ services:
       - ollama_data:/root/.ollama
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      # Use the bundled ollama CLI — the image has no curl/wget
+      test: ["CMD", "ollama", "list"]
       interval: 15s
       timeout: 10s
       retries: 10
@@ -37,11 +38,14 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: arasaka-gawain:local
     container_name: arasaka-gawain
     ports:
       - "8000:8000"
     env_file:
-      - .env
+      # Optional: CI / fresh clones have no .env — don't hard-fail
+      - path: .env
+        required: false
     environment:
       # Override Ollama URL to use internal docker DNS — app can reach ollama service
       - OLLAMA_BASE_URL=http://ollama:11434
@@ -55,10 +59,12 @@ services:
       # Optional: mount .env live
       # - ./.env:/app/.env:ro
     depends_on:
+      # Intentionally NOT service_healthy — the app must boot and serve the UI
+      # even if the LLM node never comes up. The entrypoint waits politely.
       - ollama
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 10

@@ -6,8 +6,9 @@
 [![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![Ollama](https://img.shields.io/badge/Ollama-Local_LLM-000000?style=flat-square&logo=ollama&logoColor=white)](https://ollama.com)
-[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=flat-square&logo=docker&logoColor=white)](./DOCKER.md)
-[![CI](https://github.com/AvinavKhadka/gawain-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/AvinavKhadka/gawain-engine/actions)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=flat-square&logo=docker&logoColor=white)](#-docker--production-deployment)
+[![GHCR](https://img.shields.io/badge/ghcr.io-arasaka--gawain-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/AvinavKhadka/gawain-engine/pkgs/container/gawain-engine)
+[![CI](https://github.com/AvinavKhadka/gawain-engine/actions/workflows/ci.yaml/badge.svg)](https://github.com/AvinavKhadka/gawain-engine/actions)
 [![License](https://img.shields.io/badge/License-MIT-22c55e?style=flat-square)](./README.md)
 
 ![Dark cyberpunk styled hero banner centered on a black background with a red triskele emblem and the project title Gawain Engine. The banner shows the tagline Natural language → T-SQL → KPI cards, tables & charts — all locally, no cloud. Visual tone is futuristic, bold, and tactical with high-contrast red and black colors.]
@@ -97,7 +98,7 @@ flowchart TD
 | **UI Libs** | AG Grid 35 + Chart.js 4 + JetBrains Mono + Orbitron | Tables + charts |
 | **Storage** | SQLite (history) + DuckDB (analytics extract) | `storage/` dir, gitignored |
 | **Theme** | Arasaka-inspired — CSS custom props, clip-path tactical, grid + scanlines | `App.css` 900+ lines — アラサカデザイン |
-| **DevOps** | Docker multi-stage (Node 20 → Python 3.11 slim + msodbcsql17) | `Dockerfile` + `docker-compose.yml` |
+| **DevOps** | Docker multi-stage (Node 22 → Python 3.11 slim + msodbcsql17/18) | `Dockerfile` + `docker-compose.yml` |
 
 ---
 
@@ -214,9 +215,128 @@ docker compose up --build -d
 docker compose logs -f app
 ```
 
-**Stack:** `app` (Python 3.11 slim + ODBC 17 + Node build, :8000) + `ollama` (ollama/ollama:latest, :11434) + optional `mssql` (uncomment in compose for local SQL testing).
+**Stack:** `app` (Python 3.11 slim + ODBC 17/18 + Node build, :8000) + `ollama` (ollama/ollama:latest, :11434) + optional `mssql` (uncomment in compose for local SQL testing).
 
 Healthchecks are lenient — `app` shows `Up` even if DB offline, UI loads with `DB: OFFLINE` badge — perfect for demo/product.
+
+> ⏳ **First run downloads the LLM (~5 GB).** `docker-entrypoint.sh` pulls `OLLAMA_MODEL` automatically. Watch it with `docker compose logs -f app`. The model persists in the `arasaka_ollama_data` volume, so this is a one-time cost.
+>
+> Set `OLLAMA_AUTO_PULL=0` to skip the wait-and-pull entirely (useful in CI).
+
+---
+
+## 🎯 Getting to `database: true`
+
+The health endpoint is the fastest way to know where you stand:
+
+```bash
+curl http://localhost:8000/api/health
+```
+
+| Response | Meaning |
+|---|---|
+| `{"ollama":true,"database":true}` | ✅ Fully wired — everything works |
+| `{"ollama":true,"database":false}` | 🟡 UI + LLM fine, **no DB** — chat/SQL features return errors |
+| `{"ollama":false,"database":true}` | 🟡 DB fine, **no LLM** — can't generate SQL |
+| `{"ollama":false,"database":false}` | 🟡 Neither attached — app still serves, by design |
+
+**`database: false` is not a crash.** `get_schema()` fails to connect, the exception is caught, and the flag reports `false`. The app stays up on purpose so you can demo the UI without a database. To turn it green, pick the path that matches your setup:
+
+### Path 1 — SQL Server on your host machine (most common)
+
+⚠️ **Windows Authentication does not work from a Linux container.** The container isn't on your Windows domain and has no access to your credentials. You **must** enable SQL Server Authentication and use a SQL login. This is the single most common reason `database` stays `false`.
+
+**1. Enable mixed-mode auth** — SSMS → right-click server → *Properties* → *Security* → select **SQL Server and Windows Authentication mode** → **restart the SQL Server service** (the restart is required).
+
+**2. Create a read-only login:**
+
+```sql
+CREATE LOGIN gawain WITH PASSWORD = 'Gawain!2026';
+USE YourBusinessDB;
+CREATE USER gawain FOR LOGIN gawain;
+ALTER ROLE db_datareader ADD MEMBER gawain;
+```
+
+`db_datareader` is deliberate — Gawain only ever reads. Don't grant more.
+
+**3. Enable TCP/IP** — *SQL Server Configuration Manager* → *SQL Server Network Configuration* → *Protocols for \<INSTANCE\>* → set **TCP/IP** to **Enabled** → restart the service. Named instances often ship with TCP/IP off, and pyodbc can't connect over shared memory from a container.
+
+**4. Find your exact instance name:**
+
+```powershell
+Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL"
+```
+
+**5. Write `.env`:**
+
+```ini
+DB_SERVER=host.docker.internal\SQLEXPRESS
+DB_DATABASE=YourBusinessDB
+DB_DRIVER=ODBC Driver 18 for SQL Server
+DB_USER=gawain
+DB_PASSWORD=Gawain!2026
+OLLAMA_BASE_URL=http://ollama:11434
+```
+
+`host.docker.internal` is the magic hostname that resolves to your Windows/macOS host from inside the container. Use `localhost` and you'll be talking to the container itself.
+
+**6. Apply it** — `.env` is read at container *start*, not build:
+
+```bash
+docker compose restart app
+curl http://localhost:8000/api/health
+```
+
+> 💡 **ODBC 17 vs 18:** the image ships **both**. Driver 18 encrypts by default and will reject a self-signed server certificate with `SSL Provider: certificate verify failed`. Either stay on `ODBC Driver 17 for SQL Server`, or use 18 and append `;TrustServerCertificate=yes` handling in `config/settings.py`.
+
+### Path 2 — No SQL Server? Run one in Docker
+
+Uncomment the `mssql` service **and** the `mssql_data` volume in `docker-compose.yml`, then:
+
+```bash
+mkdir backups   # drop AdventureWorksDW2019.bak here
+docker compose up -d mssql ollama
+
+docker compose exec mssql /opt/mssql-tools18/bin/sqlcmd \
+  -S localhost -U sa -P "YourStrong!Passw0rd123" \
+  -Q "RESTORE DATABASE AdventureWorksDW2019 FROM DISK='/backups/AdventureWorksDW2019.bak' WITH REPLACE" -C
+```
+
+Then set `DB_SERVER=mssql`, `DB_USER=sa`, `DB_PASSWORD=YourStrong!Passw0rd123` and `docker compose up -d app`.
+
+Grab the demo `.bak` from [Microsoft's samples release](https://github.com/Microsoft/sql-server-samples/releases/tag/adventureworks).
+
+### Path 3 — Running without Docker
+
+Same rules minus the networking: `DB_SERVER=.\SQLEXPRESS`, and Windows Auth **does** work here — leave `DB_USER` / `DB_PASSWORD` blank.
+
+### Debugging a stubborn `false`
+
+Test the connection from inside the container, which isolates network issues from app issues:
+
+```bash
+docker exec -it arasaka-gawain /opt/mssql-tools18/bin/sqlcmd \
+  -S host.docker.internal\\SQLEXPRESS -U gawain -P "Gawain!2026" -Q "SELECT DB_NAME()" -C
+```
+
+| Error | Cause |
+|---|---|
+| `Login failed for user` | Mixed-mode auth off, or wrong password |
+| `TCP Provider: Error code 0x2AF9` | TCP/IP disabled, or firewall blocking 1433 |
+| `certificate verify failed` | Driver 18 + self-signed cert — see the ODBC note above |
+| `Data source name not found` | `DB_DRIVER` string doesn't match an installed driver |
+
+List the drivers actually present in the image:
+
+```bash
+docker exec arasaka-gawain odbcinst -q -d
+```
+
+And check the app's own logs — the entrypoint prints the resolved DB target and ODBC drivers on every boot:
+
+```bash
+docker compose logs app | head -20
+```
 
 ### 🏢 For Clients — Connect YOUR SQL Database
 
@@ -292,8 +412,6 @@ docker save arasaka-gawain -o arasaka.tar
 
 **Licensing:** Developer Edition = free forever for dev/test, Express = free up to 10GB prod. You build without DB, client brings their own — data never leaves premises — アラサカ — 安全なデータ分析 🔒
 
-Full guide: **[DOCKER.md](DOCKER.md)** 🐳
-
 ---
 
 ## ⚙ Configuration
@@ -319,12 +437,12 @@ Config lives in `config/settings.py` — chart colors, LLM params, keyword sets 
 
 ```
 gawain-engine/
+├── .github/workflows/ci.yaml # ✅ CI: lint, build, container smoke test
 ├── Dockerfile               # 🐳 Multi-stage: Node + Python + ODBC
 ├── docker-compose.yml       # 🐳 app + ollama + optional mssql
 ├── docker-entrypoint.sh     # 🐳 Wait for Ollama + pull model
 ├── .dockerignore
 ├── .env.docker.example
-├── DOCKER.md                # 🐳 Full Docker guide
 │
 ├── main.py                  # 🚪 FastAPI entry — serves static + API
 ├── requirements.txt
@@ -347,8 +465,9 @@ gawain-engine/
 │   ├── index.html
 │   ├── public/
 │   │   ├── favicon.svg              # ⬢ Authentic triskele — アラサカ
-│   │   ├── arasaka-emblem.svg       # Arasaka emblem vector
-│   │   └── arasaka-wordmark.svg     # arasaka wordmark
+│   │   ├── arasaka_logo.svg         # Arasaka emblem vector
+│   │   ├── arasaka_wordmark.svg     # arasaka wordmark
+│   │   └── icons.svg                # UI icon sprite
 │   └── src/
 │       ├── App.tsx
 │       ├── App.css          # 🔴 Arasaka visual theme — 900+ lines, grid + scanlines
@@ -407,11 +526,15 @@ done    → ""           ✅ End
 
 ## 🧪 Troubleshooting
 
-### 🔴 `DB Error` / `DB: OFFLINE`
-- Check `DB_SERVER` — e.g. `.\SQLEXPRESS` not `YOUR_PC\...`
-- SSMS can connect?
-- `Get-Service | Where-Object { $_.Name -like "MSSQL*" }` + `Get-ItemProperty HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL`
-- Browser: `curl http://localhost:8000/api/health` → `database: false` = DB issue
+### 🔴 `DB Error` / `DB: OFFLINE` / `database: false`
+👉 **Full walkthrough: [Getting to `database: true`](#-getting-to-database-true)**
+
+Quick checks:
+- **In Docker?** Windows Auth won't work — you need a SQL login + mixed-mode auth
+- **In Docker?** `DB_SERVER` must be `host.docker.internal\INSTANCE`, not `localhost`
+- TCP/IP enabled in SQL Server Configuration Manager? (off by default on named instances)
+- `Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL"` for the real instance name
+- Changed `.env`? → `docker compose restart app` (it's read at start, not build)
 
 ### 🔴 `Ollama Offline`
 - `ollama serve` in separate terminal
@@ -441,8 +564,43 @@ Dev bypass: `npm run dev` → `:5173`
 - Heredoc `COPY --chmod=755 <<'SH'` not supported on older Docker → use separate file `docker-entrypoint.sh` + `COPY` + `RUN chmod +x` — fixed in repo
 
 ### 🐳 Docker `unhealthy` dependency failed
-- Healthchecks now lenient: `start_period 60s`, `retries 10`, checks `/` not `/api/health`, `depends_on: - ollama` (no healthy condition)
+- Healthchecks are lenient: `start_period 60s`, `retries 10`, `depends_on: - ollama` with **no** `service_healthy` condition — the app must boot even if the LLM never comes up
 - `docker compose down && docker compose up --build -d`
+
+### 🐳 Docker build: `The repository ... is not signed` / `Missing key EE4D7792F748182B`
+`packages.microsoft.com/debian/13` (trixie) is signed by a **different key** than `/debian/12` — `microsoft.asc` alone is not enough. The Dockerfile imports both `microsoft.asc` and `microsoft-2025.asc` for this reason. Don't "simplify" it back to one key.
+
+### 🐳 `env file /path/.env not found`
+`.env` is gitignored, so fresh clones and CI runners don't have one. `docker-compose.yml` marks it `required: false`, which needs **Compose v2.24+** — check with `docker compose version`. Either way: `cp .env.docker.example .env`.
+
+### 🐳 `exec /app/docker-entrypoint.sh: no such file or directory`
+Windows CRLF line endings. The repo's `.gitattributes` normalises to LF — if you hand-edited the file, save it with **LF**.
+
+---
+
+## ✅ CI
+
+`.github/workflows/ci.yaml` runs on every push and PR to `main`:
+
+| Job | What it checks |
+|-----|----------------|
+| 🧾 **Infra Lint** | hadolint on `Dockerfile`, shellcheck on `docker-entrypoint.sh` |
+| 🎨 **Frontend** | `npm ci` → `tsc -b` → ESLint → `vite build` → asserts `static/` actually produced |
+| 🐍 **Backend** | flake8 → `compileall` → imports the FastAPI app and asserts required routes exist |
+| 🐳 **Docker** | builds the image, **boots it**, asserts `/api/health` shape + SPA shell + ODBC drivers |
+| 🚀 **Publish** | pushes to GHCR — `main` only |
+
+The Docker job runs the container with no database and no LLM and asserts it still serves — that's the graceful-degradation contract this project is built on.
+
+Reproduce the container smoke test locally:
+
+```bash
+docker run -d --name gawain-smoke -p 8001:8000 -e OLLAMA_AUTO_PULL=0 arasaka-gawain:local
+curl http://localhost:8001/api/health   # → {"ollama":false,"database":false}
+docker rm -f gawain-smoke
+```
+
+> ℹ️ The **Publish** job pushes a public package to GHCR on every `main` push. Delete that job from `ci.yaml` if you don't want that.
 
 ---
 

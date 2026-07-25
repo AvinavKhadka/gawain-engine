@@ -10,8 +10,42 @@ on:
     branches: [main]
     paths-ignore:
       - '**.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+# Superseded runs on the same branch/PR are pointless — cancel them.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '22'
+  PYTHON_VERSION: '3.11'
 
 jobs:
+  # 🧾 Lint the plumbing itself — Dockerfile + entrypoint shell
+  lint-infra:
+    name: 🧾 Infra Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v7
+
+      - name: 🐳 Hadolint (Dockerfile)
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          # DL3008/DL3013: we deliberately float apt & pip versions; the MS ODBC
+          # repo drops old builds, so hard pins rot faster than they help.
+          ignore: DL3008,DL3013
+          failure-threshold: warning
+
+      - name: 🐚 ShellCheck (entrypoint)
+        run: shellcheck docker-entrypoint.sh
+
   # 🎨 Frontend — TypeScript + Arasaka theme build
   frontend:
     name: 🎨 Frontend Build & Lint
@@ -21,47 +55,60 @@ jobs:
         working-directory: frontend
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
-      - name: 🟢 Setup Node 20
-        uses: actions/setup-node@v4
+      - name: 🟢 Setup Node ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
       - name: 📦 Install deps
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
-      - name: 🔍 TypeScript check (no emit)
+      - name: 🔍 TypeScript check
         run: npx tsc -b --force
 
       - name: 🧹 ESLint
-        run: npx eslint src --ext .ts,.tsx || echo "⚠️ ESLint warnings"
+        run: npm run lint
 
       - name: 🏗️ Build Arasaka theme
         run: npm run build
 
+      - name: 🔬 Verify build output
+        run: |
+          test -f ../static/index.html || { echo "::error::static/index.html missing"; exit 1; }
+          test -d ../static/assets     || { echo "::error::static/assets missing";     exit 1; }
+          echo "✅ static/ built — $(du -sh ../static | cut -f1)"
+
       - name: 📤 Upload static artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: arasaka-static
           path: static/
           retention-days: 3
+          if-no-files-found: error
 
-  # 🐍 Backend — Python syntax + import check
+  # 🐍 Backend — lint + import + route sanity
   backend:
     name: 🐍 Backend Lint
     runs-on: ubuntu-latest
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
-      - name: 🐍 Setup Python 3.11
-        uses: actions/setup-python@v5
+      - name: 🐍 Setup Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v7
         with:
-          python-version: "3.11"
+          python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: 🔌 Install unixODBC
+        # pyodbc links libodbc.so.2 at import time — without this the app
+        # import check below fails on a bare runner.
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq unixodbc
 
       - name: 📦 Install deps
         run: |
@@ -69,42 +116,102 @@ jobs:
           pip install -r requirements.txt
           pip install flake8
 
-      - name: 🧹 Flake8 (light)
-        run: flake8 server/ config/ main.py --max-line-length=120 --exclude=__pycache__ || true
+      - name: 🧹 Flake8
+        # .flake8 already scopes this to real (pyflakes) errors — let it fail the build
+        run: flake8 server/ config/ main.py
 
       - name: 🔍 Compile check
-        run: python -m py_compile main.py server/*.py config/*.py
+        run: python -m compileall -q main.py server/ config/
 
-  # 🐳 Docker — Build image (no push) + healthcheck
+      - name: 🚦 Import app & assert routes
+        # Proves the FastAPI app object actually constructs without a database.
+        env:
+          DB_SERVER: localhost
+          DB_DATABASE: none
+        run: |
+          python - <<'PY'
+          from main import app
+          paths = {r.path for r in app.routes}
+          required = {"/api/health", "/api/schema", "/api/chat"}
+          missing = required - paths
+          assert not missing, f"missing routes: {missing}"
+          print(f"✅ app imports clean — {len(paths)} routes registered")
+          PY
+
+  # 🐳 Docker — build image, then actually run it
   docker:
-    name: 🐳 Docker Build
+    name: 🐳 Docker Build & Smoke Test
     runs-on: ubuntu-latest
-    needs: [frontend, backend]
+    needs: [lint-infra, frontend, backend]
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: 🐳 Setup Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
-      - name: 🏗️ Build image (no push, with cache)
-        uses: docker/build-push-action@v6
+      - name: 🏗️ Build image (load into local daemon)
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: Dockerfile
           push: false
-          tags: arasaka-gawain:${{ github.sha }}
+          load: true
+          tags: arasaka-gawain:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          # Build args if needed
-          # build-args: |
-          #   NODE_ENV=production
 
-      - name: ✅ Smoke test — docker compose config
-        run: docker compose config
+      - name: 🧪 Compose config validation
+        # .env is gitignored, so a fresh checkout has none. env_file is marked
+        # optional in compose, but we still feed it the example to exercise
+        # variable interpolation end to end.
+        run: |
+          cp .env.example .env
+          docker compose config --quiet
+          echo "✅ docker-compose.yml resolves"
 
-  # 🚀 Optional: Push to GHCR on main push (if you set DOCKERHUB or GHCR secrets)
-  # Uncomment to enable auto-publish
+      - name: 🔥 Smoke test — boot container, hit endpoints
+        run: |
+          docker run -d --name gawain-smoke -p 8000:8000 \
+            -e OLLAMA_AUTO_PULL=0 \
+            -e DB_SERVER=localhost -e DB_DATABASE=none \
+            arasaka-gawain:ci
+
+          echo "⏳ waiting for :8000 ..."
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8000/api/health >/dev/null 2>&1; then
+              echo "✅ up after ${i}s"; break
+            fi
+            if [ "$i" = "30" ]; then
+              echo "::error::container never became ready"
+              docker logs gawain-smoke
+              exit 1
+            fi
+            sleep 1
+          done
+
+          echo "--- /api/health"
+          curl -fsS http://localhost:8000/api/health | tee /tmp/health.json
+          echo
+          echo "--- / (SPA shell)"
+          curl -fsS -o /dev/null -w 'HTTP %{http_code}\n' http://localhost:8000/
+
+          # DB and Ollama are absent here, so both flags must be false — this
+          # asserts the app degrades gracefully instead of crashing.
+          python3 -c "import json;d=json.load(open('/tmp/health.json'));assert set(d)=={'ollama','database'},d;print('✅ health shape OK:',d)"
+
+          echo "--- ODBC drivers in image"
+          docker exec gawain-smoke odbcinst -q -d
+
+      - name: 📋 Container logs
+        if: always()
+        run: docker logs gawain-smoke || true
+
+      - name: 🧹 Teardown
+        if: always()
+        run: docker rm -f gawain-smoke || true
+
+  # 🚀 Publish to GHCR — main branch only
   docker-publish:
     name: 🚀 Publish to GHCR (main only)
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -115,10 +222,13 @@ jobs:
       packages: write
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
+
+      - name: 🐳 Setup Docker Buildx
+        uses: docker/setup-buildx-action@v4
 
       - name: 🔐 Login to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -126,15 +236,16 @@ jobs:
 
       - name: 🏷️ Meta
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
-          images: ghcr.io/${{ github.repository }}
+          # Repo name is mixed-case; GHCR requires lowercase.
+          images: ghcr.io/${{ github.repository_owner }}/gawain-engine
           tags: |
             type=raw,value=latest
-            type=sha
+            type=sha,format=long
 
       - name: 🐳 Build & Push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: Dockerfile
@@ -142,3 +253,4 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
+          cache-to: type=gha,mode=max

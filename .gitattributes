@@ -1,2 +1,40 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# ── LF-critical files ─────────────────────────────────────────────────────────
+# These run inside Linux containers. CRLF line endings break them with the
+# classic "exec /app/docker-entrypoint.sh: no such file or directory" error,
+# because the kernel reads the shebang as "/usr/bin/env bash\r" and fails.
+# Windows checkouts MUST keep LF here.
+*.sh                text eol=lf
+docker-entrypoint.sh text eol=lf
+Dockerfile          text eol=lf
+*.dockerfile        text eol=lf
+docker-compose.yml  text eol=lf
+.dockerignore       text eol=lf
+.env.example        text eol=lf
+.env.docker.example text eol=lf
+
+# CI / config that Linux runners parse
+*.yml               text eol=lf
+*.yaml              text eol=lf
+
+# ── Windows-only ──────────────────────────────────────────────────────────────
+*.bat               text eol=crlf
+*.cmd               text eol=crlf
+*.ps1               text eol=crlf
+
+# ── Binary — never touch ──────────────────────────────────────────────────────
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.pdf   binary
+*.bak   binary
+*.duckdb binary
+*.db    binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.otf   binary
