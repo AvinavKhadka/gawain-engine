@@ -17,6 +17,8 @@ export function useHealth() {
     }
   };
 
+  // Initial health check on mount — intentional setState in effect for data fetching
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { check(); }, []);
 
   return { status, refresh: check };

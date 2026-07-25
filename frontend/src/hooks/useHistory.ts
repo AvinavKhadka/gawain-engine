@@ -18,6 +18,8 @@ export function useHistory() {
     }
   }, []);
 
+  // Initial load — intentional
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { refresh(); }, [refresh]);
 
   const toggleFavorite = useCallback(async (id: number) => {

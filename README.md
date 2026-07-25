@@ -7,9 +7,10 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![Ollama](https://img.shields.io/badge/Ollama-Local_LLM-000000?style=flat-square&logo=ollama&logoColor=white)](https://ollama.com)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=flat-square&logo=docker&logoColor=white)](./DOCKER.md)
+[![CI](https://github.com/AvinavKhadka/gawain-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/AvinavKhadka/gawain-engine/actions)
 [![License](https://img.shields.io/badge/License-MIT-22c55e?style=flat-square)](./README.md)
 
-![Hero](frontend/src/assets/hero.png)
+![Dark cyberpunk styled hero banner centered on a black background with a red triskele emblem and the project title Gawain Engine. The banner shows the tagline Natural language → T-SQL → KPI cards, tables & charts — all locally, no cloud. Visual tone is futuristic, bold, and tactical with high-contrast red and black colors.]
 
 > **Natural language → T-SQL → KPI cards, tables & charts — all locally, no cloud.**
 > Visual theme: **Arasaka** — red `#ff003c` / black `#05070d` / authentic triskele emblem — アラサカ

@@ -11,7 +11,7 @@ from tabulate import tabulate
 
 from config.settings import (
     get_connection_string, DB_TABLE_FILTER, DB_DATABASE,
-    CURRENCY_HINTS, INTEGER_HINTS, PERCENT_HINTS,
+    CURRENCY_HINTS, PERCENT_HINTS,
     TIME_HINTS, CAT_HINTS, CHART_COLORS,
 )
 

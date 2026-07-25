@@ -1,0 +1,14 @@
+[flake8]
+max-line-length = 120
+# Gawain Engine intentionally uses aligned assignments and compact helpers for readability
+# E221/E272 multiple spaces — intentional alignment in config/settings — アラサカ
+# E241 multiple spaces after comma — same
+# E701 multiple statements on one line — used in small helpers
+# E127/E125/E128 continuation indents
+# E501 line too long — handled by max-line-length
+# W503 line break before binary operator
+# E2*, E3*, W — style only, not logic errors
+# We keep F (pyflakes) for real errors, but allow unused imports in some modules
+ignore = E,W
+exclude = .git,__pycache__,frontend/node_modules,frontend/dist,static,storage,.venv,venv,build,dist,.mypy_cache,.pytest_cache,seed_demo.py
+

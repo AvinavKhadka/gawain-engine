@@ -15,7 +15,6 @@ Run from project root with venv active.
 import argparse
 import json
 import os
-import re
 import sqlite3
 import sys
 
@@ -284,7 +283,7 @@ def validate_sql_live(sql: str) -> tuple[bool, str]:
     """Run SET NOEXEC ON against the live DB. Returns (ok, error_msg)."""
     try:
         import pyodbc
-        from core.config import get_connection_string
+        from config.settings import get_connection_string
         conn = pyodbc.connect(get_connection_string(), timeout=10)
         cur = conn.cursor()
         cur.execute("SET NOEXEC ON")

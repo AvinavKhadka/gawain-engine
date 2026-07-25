@@ -52,6 +52,8 @@ export function useDrivers() {
     }
   }, []);
 
+  // Initial load — intentional
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { refresh(); }, [refresh]);
 
   return { meta, loading, rebuilding, error, refresh, rebuild };

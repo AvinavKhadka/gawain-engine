@@ -425,7 +425,7 @@ def run(method: str, measure: str | None = None, **kwargs) -> dict:
 
 
 if __name__ == "__main__":
-    import argparse, json
+    import argparse
 
     ap = argparse.ArgumentParser(description="Run a driver analysis.")
     ap.add_argument("method", choices=list(_METHODS))
