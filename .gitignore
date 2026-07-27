@@ -47,3 +47,8 @@ train/checkpoints/
 
 # Claude Code
 .claude/
+
+# Database backups — large binaries, never commit
+*.bak
+backups/*
+!backups/.gitkeep

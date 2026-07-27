@@ -8,31 +8,28 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from server.database import (
-    get_schema_context, execute_query, validate_sql, dataframe_to_markdown,
-    df_to_grid_json, detect_chart, extract_kpis, result_brief,
-    TREND_SQL_5DAYS, TREND_SQL_12MONTHS,
+    get_cached_schema, clear_schema_cache, execute_query, validate_sql,
+    dataframe_to_markdown, df_to_grid_json, detect_chart, extract_kpis,
+    result_brief,
 )
 from server.schema_retrieval import get_relevant_schema
+from config.observability import get_logger
 import server.history as history_db
 from server.llm import (
     generate_sql, fix_sql, extract_sql,
     stream_deep_analysis, stream_driver_analysis, check_ollama,
-    is_trend_question, is_deep_question, needs_planning, plan_query,
+    is_deep_question, needs_planning, plan_query,
     is_driver_question, pick_driver_method,
 )
 from config.settings import SESSION_MAX_TURNS, CHART_COLORS
 
 router = APIRouter()
+log = get_logger(__name__)
 
 # ── Schema cache ──────────────────────────────────────────────────────────────
-_schema_cache: str | None = None
-
-
 def get_schema() -> str:
-    global _schema_cache
-    if _schema_cache is None:
-        _schema_cache = get_schema_context()
-    return _schema_cache
+    """Schema context, cached in server.database so the SQL sanitiser shares it."""
+    return get_cached_schema()
 
 
 # ── In-memory session store: session_id -> last N conversation turns ──────────
@@ -117,14 +114,41 @@ def _driver_chart(result: dict) -> dict | None:
 
 # ── Health & schema ───────────────────────────────────────────────────────────
 
+#: Last database error string reported by /api/health. Used to log a repeated
+#: failure once instead of on every poll — monitors hit this endpoint on a
+#: fixed interval, and an unreachable DB would otherwise flood the log with
+#: identical lines. A changed error, or a recovery, always logs.
+_last_db_error: str | None = None
+
+
 @router.get("/api/health")
 def health():
+    global _last_db_error
+
     ollama_ok = check_ollama()
+    db_ok = False
+    db_error = None
     try:
         db_ok = bool(get_schema())
-    except Exception:
-        db_ok = False
-    return {"ollama": ollama_ok, "database": db_ok}
+    except Exception as e:
+        # The reason used to be discarded here, which is why a false flag was
+        # undiagnosable. Log it — but only when it changes, so a polling
+        # monitor cannot spam the log.
+        db_error = f"{type(e).__name__}: {e}"
+        if db_error != _last_db_error:
+            log.warning("database health check failed", extra={"error": db_error})
+            log.debug("database health check traceback", exc_info=True)
+        else:
+            log.debug("database health check still failing", extra={"error": db_error})
+
+    if db_ok and _last_db_error is not None:
+        log.info("database connection recovered")
+    _last_db_error = db_error
+
+    payload = {"ollama": ollama_ok, "database": db_ok}
+    if db_error:
+        payload["database_error"] = db_error
+    return payload
 
 
 @router.get("/api/schema")
@@ -137,8 +161,7 @@ def schema_endpoint():
 
 @router.post("/api/schema/refresh")
 def refresh_schema():
-    global _schema_cache
-    _schema_cache = None
+    clear_schema_cache()      # also drops the derived column index
     try:
         schema = get_schema()
         return {"status": "refreshed", "tables": schema.count("Table:")}
@@ -498,23 +521,6 @@ def chat(req: ChatRequest):
                             "sql": step_sql,
                             "results_md": dataframe_to_markdown(step_df),
                         })
-
-        # ── Supplemental trend data ────────────────────────────────────────
-        if is_trend_question(req.question):
-            yield emit("step", "Fetching trend data...")
-            df5, e5 = execute_query(TREND_SQL_5DAYS)
-            if not e5 and df5 is not None and not df5.empty:
-                yield emit("grid", {**df_to_grid_json(df5), "_title": "Last 5 Order Days"})
-                c5 = detect_chart(df5, "Last 5 Order Days — Daily Revenue")
-                if c5:
-                    yield emit("chart", c5)
-
-            df12, e12 = execute_query(TREND_SQL_12MONTHS)
-            if not e12 and df12 is not None and not df12.empty:
-                yield emit("grid", {**df_to_grid_json(df12), "_title": "Last 12 Months"})
-                c12 = detect_chart(df12, "Last 12 Months — Monthly Revenue")
-                if c12:
-                    yield emit("chart", c12)
 
         # ── Streaming LLM analysis ─────────────────────────────────────────
         yield emit("step", "Analysing findings...")

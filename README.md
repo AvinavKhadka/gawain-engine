@@ -7,7 +7,6 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
 [![Ollama](https://img.shields.io/badge/Ollama-Local_LLM-000000?style=flat-square&logo=ollama&logoColor=white)](https://ollama.com)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=flat-square&logo=docker&logoColor=white)](#-docker--production-deployment)
-[![GHCR](https://img.shields.io/badge/ghcr.io-arasaka--gawain-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/AvinavKhadka/gawain-engine/pkgs/container/gawain-engine)
 [![CI](https://github.com/AvinavKhadka/gawain-engine/actions/workflows/ci.yaml/badge.svg)](https://github.com/AvinavKhadka/gawain-engine/actions)
 [![License](https://img.shields.io/badge/License-MIT-22c55e?style=flat-square)](./README.md)
 
@@ -225,6 +224,84 @@ Healthchecks are lenient — `app` shows `Up` even if DB offline, UI loads with 
 
 ---
 
+### ⚡ GPU acceleration & model choice
+
+Text-to-SQL quality and speed are dominated by two settings.
+
+**Model** — set `OLLAMA_MODEL` in `.env`:
+
+| Model | VRAM | Notes |
+|---|---|---|
+| `qwen2.5-coder:7b` | ~6 GB | Best join-chain and column recall. Needs a GPU to be comfortable. |
+| `qwen2.5-coder:3b` | ~3 GB | Good SQL, usable on CPU. Safe default. |
+| `llama3.2:3b` | ~3 GB | General chat model — hallucinates columns and skips dimension tables on star schemas. Not recommended here. |
+
+```bash
+docker compose exec ollama ollama pull qwen2.5-coder:7b
+# .env → OLLAMA_MODEL=qwen2.5-coder:7b
+docker compose up -d --force-recreate app
+```
+
+**GPU** — the `ollama` service already reserves all NVIDIA devices. Requires an
+up-to-date driver: Ollama needs **550 or newer**, and reports
+`NVIDIA driver too old` in its logs if not.
+
+```bash
+wsl --shutdown                 # after a driver install, so WSL2 re-reads it
+docker compose up -d --force-recreate ollama
+docker compose logs ollama | grep -i "inference compute"
+```
+
+Look for `library=CUDA` and your GPU name. `library=cpu` means it fell back:
+
+```
+library=CUDA compute=8.9 name=CUDA0 description="NVIDIA GeForce RTX 4060 Laptop GPU" total="8.0 GiB"
+```
+
+Confirm a loaded model is actually on the GPU — run a query, then in another
+terminal:
+
+```bash
+docker compose exec ollama ollama ps    # PROCESSOR should read 100% GPU
+```
+
+> 💡 `OLLAMA_KEEP_ALIVE=-1` is set in compose so the model stays resident in
+> VRAM. Ollama's default unloads after 5 minutes idle, which makes the first
+> query after any pause pay the full model-load cost again.
+
+No NVIDIA GPU? Comment out the `deploy:` block under the `ollama` service —
+otherwise the container fails to start rather than falling back to CPU.
+
+---
+
+### ⚙️ Which command picks up which change
+
+The single most common source of "I changed it but nothing happened":
+
+| You changed | Command | Why |
+|---|---|---|
+| Nothing — just want a bounce | `docker compose restart app` | Same container, same image, same env |
+| `.env` / `environment:` | `docker compose up -d --force-recreate app` | Env is fixed at container **creation**; `restart` reuses it |
+| `docker-compose.yml` | `docker compose up -d` | Compose diffs the config and recreates what changed |
+| **Python source** (`server/`, `config/`, `main.py`) | `docker compose up -d --build app` | The Dockerfile `COPY`s code **into the image** — a recreate reuses the old image |
+| `Dockerfile` / `requirements.txt` | `docker compose up -d --build app` | Same reason |
+| `frontend/` | `docker compose up -d --build app` | Vite build runs in the image's builder stage |
+
+> 💡 **Skip rebuilds while developing.** `docker-compose.yml` mounts `./server`,
+> `./config` and `./main.py` read-only into the app container, so a Python edit
+> only needs `docker compose restart app` (seconds, not a minute). Comment those
+> mounts out to test the real production image — that is what CI builds and what
+> ships to GHCR.
+
+Verify what the container actually has, rather than assuming:
+
+```bash
+docker compose exec app grep -c "_strip_trailing_limit" server/database.py   # 0 = stale
+docker compose exec app env | grep DB_                                       # real env
+```
+
+---
+
 ## 🎯 Getting to `database: true`
 
 The health endpoint is the fastest way to know where you stand:
@@ -280,10 +357,11 @@ OLLAMA_BASE_URL=http://ollama:11434
 
 `host.docker.internal` is the magic hostname that resolves to your Windows/macOS host from inside the container. Use `localhost` and you'll be talking to the container itself.
 
-**6. Apply it** — `.env` is read at container *start*, not build:
+**6. Apply it** — environment is fixed when the container is *created*, so
+`restart` is not enough; the container must be recreated:
 
 ```bash
-docker compose restart app
+docker compose up -d --force-recreate app
 curl http://localhost:8000/api/health
 ```
 
@@ -534,7 +612,8 @@ Quick checks:
 - **In Docker?** `DB_SERVER` must be `host.docker.internal\INSTANCE`, not `localhost`
 - TCP/IP enabled in SQL Server Configuration Manager? (off by default on named instances)
 - `Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL"` for the real instance name
-- Changed `.env`? → `docker compose restart app` (it's read at start, not build)
+- Changed `.env`? → `docker compose up -d --force-recreate app` (a plain
+  `restart` reuses the existing container and its baked-in environment)
 
 ### 🔴 `Ollama Offline`
 - `ollama serve` in separate terminal

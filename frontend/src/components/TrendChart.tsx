@@ -126,6 +126,26 @@ export function TrendChart({ data, onPin }: Props) {
       return () => { chartRef.current?.destroy(); };
     }
 
+    if (type === "horizontal_bar") {
+      createChart({
+        type: "bar" as const,
+        data: { labels: data.labels, datasets: data.datasets.map((ds: any, i: number) => ({ label: ds.label, data: ds.data as number[], backgroundColor: (ds.color || SEGMENT_COLORS[i % SEGMENT_COLORS.length]) + "BB", borderColor: ds.color || SEGMENT_COLORS[i % SEGMENT_COLORS.length], borderWidth: 1 })) },
+        options: {
+          indexAxis: "y" as const,
+          responsive: true, maintainAspectRatio: false, interaction: { mode: "index" as const, intersect: false },
+          plugins: {
+            legend: { display: data.datasets.length > 1, labels: { font: { size: 10, family: "JetBrains Mono" }, boxWidth: 10, padding: 10, color: "#8b93b0", usePointStyle: true } },
+            tooltip: { backgroundColor: "#0d0f18", borderColor: "#1e2236", borderWidth: 1, titleColor: "#e9ecf5", bodyColor: "#8b93b0" },
+          },
+          scales: {
+            x: { ticks: { font: { size: 9, family: "JetBrains Mono" }, color: "#4f5776", callback: tickY as any }, grid: { color: "rgba(255,255,255,0.06)" } },
+            y: { ticks: { font: { size: 9, family: "JetBrains Mono" }, color: "#4f5776", autoSkip: false }, grid: { color: "rgba(255,255,255,0.04)" } },
+          },
+        },
+      } as any);
+      return () => { chartRef.current?.destroy(); };
+    }
+
     const isLine = type === "line";
     createChart({
       type: isLine ? ("line" as const) : ("bar" as const),

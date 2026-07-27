@@ -53,3 +53,7 @@ logs/
 .idea
 *.swp
 *.swo
+
+# Database backups — mounted as a volume, must never enter the image
+backups/
+*.bak

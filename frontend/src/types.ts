@@ -20,7 +20,7 @@ export interface ChartDataset {
 }
 
 export interface ChartData {
-  type: "line" | "bar" | "doughnut" | "scatter" | "stacked_bar";
+  type: "line" | "bar" | "doughnut" | "scatter" | "stacked_bar" | "horizontal_bar";
   title: string;
   labels: string[];
   datasets: ChartDataset[];

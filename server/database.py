@@ -9,11 +9,14 @@ import pyodbc
 import pandas as pd
 from tabulate import tabulate
 
+from config.observability import get_logger
 from config.settings import (
     get_connection_string, DB_TABLE_FILTER, DB_DATABASE,
     CURRENCY_HINTS, PERCENT_HINTS,
     TIME_HINTS, CAT_HINTS, CHART_COLORS,
 )
+
+log = get_logger(__name__)
 
 # ── Pre-built trend queries ───────────────────────────────────────────────────
 
@@ -227,26 +230,235 @@ _COL_FIXES: list[tuple[str, str]] = [
     (r"\b(\w+)\.CustomerType\b",               r"\1.EnglishOccupation"),
     (r"\b(\w+)\.Segment\b",                    r"\1.EnglishOccupation"),
     (r"\b(\w+)\.TerritoryName\b",              r"\1.SalesTerritoryRegion"),
+    # DimDate month/day names are prefixed "English…" in AdventureWorksDW.
+    (r"\b(\w+)\.CalendarMonthName\b",          r"\1.EnglishMonthName"),
+    (r"\b(\w+)\.MonthName\b",                  r"\1.EnglishMonthName"),
+    (r"\b(\w+)\.CalendarDayName\b",            r"\1.EnglishDayNameOfWeek"),
+    (r"\b(\w+)\.DayName\b",                    r"\1.EnglishDayNameOfWeek"),
+    (r"\b(\w+)\.MonthNumber\b(?!OfYear)",      r"\1.MonthNumberOfYear"),
+    # DimDate day/week ordinals are "…NumberOf…", never "Calendar…".
+    (r"\b(\w+)\.CalendarDayOfWeek\b",          r"\1.DayNumberOfWeek"),
+    (r"\b(\w+)\.DayOfWeek\b",                  r"\1.DayNumberOfWeek"),
+    (r"\b(\w+)\.CalendarDayOfMonth\b",         r"\1.DayNumberOfMonth"),
+    (r"\b(\w+)\.DayOfMonth\b",                 r"\1.DayNumberOfMonth"),
+    (r"\b(\w+)\.CalendarDayOfYear\b",          r"\1.DayNumberOfYear"),
+    (r"\b(\w+)\.DayOfYear\b",                  r"\1.DayNumberOfYear"),
+    (r"\b(\w+)\.CalendarWeekOfYear\b",         r"\1.WeekNumberOfYear"),
+    (r"\b(\w+)\.WeekOfYear\b",                 r"\1.WeekNumberOfYear"),
+    (r"\b(\w+)\.WeekNumber\b(?!OfYear)",       r"\1.WeekNumberOfYear"),
+    # The real calendar date lives in FullDateAlternateKey; DateKey is an
+    # INTEGER YYYYMMDD surrogate and renders as 20131225 in a chart axis.
+    (r"\b(\w+)\.FullDate\b(?!AlternateKey)",   r"\1.FullDateAlternateKey"),
+    (r"\b(\w+)\.CalendarDate\b",               r"\1.FullDateAlternateKey"),
+    (r"\b(\w+)\.OrderDate\b(?!Key)",           r"\1.FullDateAlternateKey"),
 ]
 
 
+def _strip_trailing_limit(sql: str) -> tuple[str, int | None]:
+    """Remove a trailing LIMIT/OFFSET clause, returning (sql, row_limit).
+
+    LLMs trained mostly on MySQL/Postgres emit `LIMIT n` no matter how firmly
+    the prompt says T-SQL. Rather than burning LLM round-trips re-asking, we
+    strip it deterministically and hand the row count back so the caller can
+    re-express it as `SELECT TOP n`.
+
+    Handles:  LIMIT 20  |  LIMIT 20 OFFSET 5  |  LIMIT 5, 20 (MySQL)  |  FETCH NEXT
+    """
+    # MySQL two-arg form: LIMIT <offset>, <count>  -> the count is the row cap
+    m = re.search(r"\bLIMIT\s+\d+\s*,\s*(\d+)\s*;?\s*$", sql, re.IGNORECASE)
+    if m:
+        return re.sub(r"\bLIMIT\s+\d+\s*,\s*\d+\s*;?\s*$", "", sql,
+                      flags=re.IGNORECASE).rstrip(), int(m.group(1))
+
+    # Standard: LIMIT <count> [OFFSET <n>]
+    m = re.search(r"\bLIMIT\s+(\d+)(?:\s+OFFSET\s+\d+)?\s*;?\s*$", sql, re.IGNORECASE)
+    if m:
+        return re.sub(r"\bLIMIT\s+\d+(?:\s+OFFSET\s+\d+)?\s*;?\s*$", "", sql,
+                      flags=re.IGNORECASE).rstrip(), int(m.group(1))
+
+    # Postgres/ANSI OFFSET..FETCH is valid T-SQL only with ORDER BY; if the
+    # model emitted a bare FETCH FIRST without OFFSET, convert it too.
+    m = re.search(r"\bFETCH\s+(?:FIRST|NEXT)\s+(\d+)\s+ROWS?\s+ONLY\s*;?\s*$",
+                  sql, re.IGNORECASE)
+    if m and not re.search(r"\bOFFSET\b", sql, re.IGNORECASE):
+        return re.sub(r"\bFETCH\s+(?:FIRST|NEXT)\s+\d+\s+ROWS?\s+ONLY\s*;?\s*$", "",
+                      sql, flags=re.IGNORECASE).rstrip(), int(m.group(1))
+
+    return sql, None
+
+
+def _result_select_pos(sql: str) -> int:
+    """Index of the SELECT that produces the final result set.
+
+    For a plain query that is the first SELECT. For a `WITH cte AS (...) SELECT`
+    it is the SELECT *after* the CTE definitions — putting TOP inside the CTE
+    would silently truncate the wrong result set, which is a data-correctness
+    bug rather than a syntax error, so it must be handled explicitly.
+    """
+    if not re.match(r"\s*WITH\b", sql, re.IGNORECASE):
+        m = re.search(r"\bSELECT\b", sql, re.IGNORECASE)
+        return m.start() if m else -1
+
+    # Walk the string tracking parenthesis depth; the first SELECT at depth 0
+    # after the WITH block is the result-producing one.
+    depth = 0
+    for m in re.finditer(r"[()]|\bSELECT\b", sql, re.IGNORECASE):
+        tok = m.group()
+        if tok == "(":
+            depth += 1
+        elif tok == ")":
+            depth -= 1
+        elif depth == 0 and m.start() > 0:
+            return m.start()
+    return -1
+
+
+def _apply_top(sql: str, n: int) -> str:
+    """Inject `TOP n` into the result-producing SELECT, if not already capped.
+
+    A TOP already present on that SELECT is respected — the model's explicit
+    intent wins over a stripped LIMIT.
+    """
+    pos = _result_select_pos(sql)
+    if pos < 0:
+        return sql
+
+    head, tail = sql[:pos], sql[pos:]
+
+    # Already capped? leave it alone.
+    if re.match(r"\bSELECT\s+(?:DISTINCT\s+)?TOP\b", tail, re.IGNORECASE):
+        return sql
+
+    # T-SQL requires SELECT DISTINCT TOP n, not SELECT TOP n DISTINCT.
+    if re.match(r"\bSELECT\s+DISTINCT\b", tail, re.IGNORECASE):
+        tail = re.sub(r"\bSELECT\s+DISTINCT\b", f"SELECT DISTINCT TOP {n}", tail,
+                      count=1, flags=re.IGNORECASE)
+    else:
+        tail = re.sub(r"\bSELECT\b", f"SELECT TOP {n}", tail,
+                      count=1, flags=re.IGNORECASE)
+    return head + tail
+
+
+#: Process-wide schema cache. Owned here (rather than in routes.py) so the SQL
+#: sanitiser can consult the real schema without a circular import or an extra
+#: database round-trip. routes.get_schema() delegates to this.
+_schema_cache: str | None = None
+
+#: SchemaIndex built from _schema_cache, rebuilt when the schema changes.
+_schema_index = None
+_schema_index_src: str | None = None
+
+
+def get_cached_schema(refresh: bool = False) -> str:
+    """Return the schema context, fetching it once and caching it."""
+    global _schema_cache
+    if refresh:
+        _schema_cache = None
+    if _schema_cache is None:
+        _schema_cache = get_schema_context()
+    return _schema_cache
+
+
+def clear_schema_cache() -> None:
+    """Drop the cached schema (and derived index) — used by /api/schema/refresh."""
+    global _schema_cache, _schema_index, _schema_index_src
+    _schema_cache = None
+    _schema_index = None
+    _schema_index_src = None
+
+
+def repair_columns(sql: str) -> str:
+    """Resolve invalid alias.Column references against the live schema.
+
+    Uses the cached schema text, so it costs no extra database round-trip.
+    Returns the input unchanged if the schema is not available (e.g. the
+    database is offline) — column repair is an optimisation, never a
+    prerequisite for running a query.
+    """
+    global _schema_index, _schema_index_src
+
+    from server.schema_index import SchemaIndex
+
+    if _schema_cache is None:
+        return sql          # never trigger a DB fetch from inside the sanitiser
+    schema_text = _schema_cache
+
+    if _schema_index is None or _schema_index_src != schema_text:
+        _schema_index = SchemaIndex(schema_text)
+        _schema_index_src = schema_text
+
+    fixed, _ = _schema_index.fix_columns(sql)
+    return fixed
+
+
 def preprocess_sql(sql: str) -> str:
-    sql = sql.strip().rstrip(";")
-    # Fix TOP N at end of query
+    """Normalise LLM output into executable T-SQL.
+
+    Two layers, deliberately:
+
+    1. **Dialect + known-ambiguous names** (below) — deterministic rules for
+       things a schema lookup cannot decide, e.g. `CalendarDayOfWeek`, which
+       matches both `DayNumberOfWeek` and `EnglishDayNameOfWeek` equally well.
+    2. **Schema-aware resolution** (`SchemaIndex`) — every remaining
+       `alias.Column` is checked against the columns that actually exist in
+       the connected database. This is what generalises: it repairs invented
+       names nobody has hit yet, and it works against any schema, not just
+       AdventureWorksDW.
+
+    Both are far cheaper than an LLM fix-up round-trip, which costs a full
+    generation and frequently reproduces the same mistake.
+    """
+    if not sql:
+        return sql
+
+    sql = sql.strip()
+
+    # Strip markdown fences / stray backticks the extractor may have missed.
+    sql = re.sub(r"^```(?:sql|tsql|mssql)?\s*", "", sql, flags=re.IGNORECASE)
+    sql = re.sub(r"```\s*$", "", sql).strip()
+    sql = sql.replace("`", "")          # MySQL identifier quoting is invalid in T-SQL
+
+    sql = sql.rstrip(";").rstrip()
+
+    # ── Dialect: LIMIT/OFFSET -> TOP n ────────────────────────────────────────
+    sql, row_limit = _strip_trailing_limit(sql)
+    if row_limit is not None:
+        sql = _apply_top(sql, row_limit)
+
+    # ── TOP N mistakenly placed at the end of the query ───────────────────────
     m = re.search(r"\s+TOP\s+(\d+)\s*;?\s*$", sql, re.IGNORECASE)
     if m:
         n = m.group(1)
         sql = re.sub(r"\s+TOP\s+\d+\s*;?\s*$", "", sql, flags=re.IGNORECASE)
-        sql = re.sub(r"\bSELECT\b", f"SELECT TOP {n}", sql, count=1, flags=re.IGNORECASE)
-    # Fix aggregate alias syntax
+        sql = _apply_top(sql, int(n))
+
+    # ── Other dialect leakage ─────────────────────────────────────────────────
+    # Postgres cast  x::int  ->  CAST(x AS int)
+    sql = re.sub(r"\b(\w+(?:\.\w+)?)::(\w+)\b", r"CAST(\1 AS \2)", sql)
+    # MySQL/Postgres functions with no T-SQL equivalent under the same name
+    sql = re.sub(r"\bIFNULL\s*\(", "ISNULL(", sql, flags=re.IGNORECASE)
+    sql = re.sub(r"\bNOW\s*\(\s*\)", "GETDATE()", sql, flags=re.IGNORECASE)
+    sql = re.sub(r"\bCURRENT_DATE\b", "CAST(GETDATE() AS date)", sql, flags=re.IGNORECASE)
+
+    # ── Fix aggregate alias syntax ────────────────────────────────────────────
     sql = re.sub(
         r"\w+\([^)]*\)\s*=\s*((?:SUM|AVG|MIN|MAX|COUNT)\([^)]+\))\s+AS\s+(\w+)",
         r"\1 AS \2", sql, flags=re.IGNORECASE,
     )
-    # Auto-correct commonly hallucinated column names
+
+    # ── Auto-correct commonly hallucinated column names ───────────────────────
+    # These handle cases a schema lookup cannot resolve unambiguously.
     for pattern, replacement in _COL_FIXES:
         sql = re.sub(pattern, replacement, sql, flags=re.IGNORECASE)
-    return sql
+
+    # ── Schema-aware repair of anything still invalid ─────────────────────────
+    # Best-effort: never let a repair failure break query execution.
+    try:
+        sql = repair_columns(sql)
+    except Exception:
+        log.debug("schema-aware column repair skipped", exc_info=True)
+
+    return sql.strip()
 
 
 def validate_sql(sql: str) -> str | None:
@@ -396,7 +608,18 @@ def _safe_float(val) -> float:
         return 0.0
 
 
+#: Max slices before a doughnut becomes unreadable and a bar is clearer.
+DOUGHNUT_MAX_SLICES = 8
+
+
 def detect_chart(df: pd.DataFrame, title: str = "") -> dict | None:
+    """Pick a chart type from the SHAPE of the result set.
+
+    Precedence: scatter -> doughnut -> horizontal bar -> stacked bar ->
+    line -> vertical bar. The type is inferred from columns, not requested by
+    the LLM, so phrasing a question to return different columns is what
+    changes the chart.
+    """
     if df is None or df.empty or len(df) < 2:
         return None
 
@@ -427,8 +650,20 @@ def detect_chart(df: pd.DataFrame, title: str = "") -> dict | None:
     if not time_cols and not cat_cols:
         return None
 
-    # Doughnut: category-only, ≤6 rows, single metric
-    if not time_cols and cat_cols and len(df) <= 6:
+    # Part-to-whole: category-only, few slices, ONE metric.
+    #
+    # Multiple numerics deliberately fall through to a grouped bar: a doughnut
+    # can only render one series, so drawing it would silently hide every other
+    # measure the user asked for. DOUGHNUT_MAX_SLICES is generous enough for
+    # AdventureWorksDW's 4 categories and most territory/country breakdowns.
+    _cat_labels = ([str(v) for v in df[cat_cols[0]]] if cat_cols else [])
+    _longest_label = max((len(x) for x in _cat_labels), default=0)
+
+    if (not time_cols and cat_cols
+            and len(df) <= DOUGHNUT_MAX_SLICES
+            and len(num_cols) == 1
+            and _longest_label <= 18                # long names need a bar's room
+            and (df[num_cols[0]] >= 0).all()):     # negatives are meaningless as slices
         label_col  = cat_cols[0]
         num_col    = num_cols[0]
         labels     = [str(df.iloc[i][label_col]) for i in range(len(df))]
@@ -439,6 +674,22 @@ def detect_chart(df: pd.DataFrame, title: str = "") -> dict | None:
             "datasets": [{"label": num_col, "data": vals,
                           "color": CHART_COLORS[0], "segmentColors": seg_colors}],
         }
+
+    # Horizontal bar: many categories, or long labels that would be unreadable
+    # rotated 45° on an x-axis (product/subcategory names routinely are).
+    if not time_cols and cat_cols:
+        label_col  = cat_cols[0]
+        labels     = [str(df.iloc[i][label_col]) for i in range(len(df))]
+        longest    = max((len(x) for x in labels), default=0)
+        if len(df) > DOUGHNUT_MAX_SLICES or longest > 18:
+            datasets = [
+                {"label": col,
+                 "data": [_safe_float(df.iloc[j][col]) for j in range(len(df))],
+                 "color": CHART_COLORS[i % len(CHART_COLORS)]}
+                for i, col in enumerate(num_cols[:5])
+            ]
+            return {"type": "horizontal_bar", "title": title,
+                    "labels": labels, "datasets": datasets}
 
     # Stacked bar: time + category + multiple numerics
     if time_cols and cat_cols and len(num_cols) >= 2:

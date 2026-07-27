@@ -16,6 +16,12 @@ services:
       - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
+    environment:
+      # Keep the model resident in VRAM instead of unloading after 5 minutes
+      # idle (the default). Without this every query following a pause pays
+      # the full model-load cost again — ~2GB for a 3B, worse for a 7B.
+      # Set to a duration like 30m if you need the VRAM back for other work.
+      - OLLAMA_KEEP_ALIVE=-1
     restart: unless-stopped
     healthcheck:
       # Use the bundled ollama CLI — the image has no curl/wget
@@ -24,14 +30,18 @@ services:
       timeout: 10s
       retries: 10
       start_period: 60s
-    # GPU support — uncomment if you have NVIDIA + nvidia-container-toolkit
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all
-    #           capabilities: [gpu]
+    # GPU acceleration — requires an NVIDIA card plus the nvidia-container-
+    # toolkit (bundled with Docker Desktop on Windows when WSL2 + a current
+    # NVIDIA driver are installed). Comment this block out again if you move
+    # to a machine with no NVIDIA GPU: the container fails to start rather
+    # than silently falling back to CPU.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
   # 🚀 Main App — FastAPI + built React static — lenient, no hard dependency
   app:
@@ -56,44 +66,72 @@ services:
     volumes:
       # Persist history + DuckDB extract outside container
       - ./storage:/app/storage
+      # ── Dev: live source mounts ───────────────────────────────────────────
+      # The Dockerfile COPYs server/, config/ and main.py into the image, so
+      # without these a code edit needs a full `docker compose up -d --build`.
+      # With them, `docker compose restart app` is enough (seconds, not a
+      # minute). Read-only so the container can never write back to your repo.
+      #
+      # Comment these OUT to test the real production image — that is what CI
+      # builds and what ships to GHCR.
+      #
+      # :ro is safe — nothing writes into server/ or config/ at runtime. The
+      # DuckDB meta file lands in storage/, and POST /api/train/save writes to
+      # train/data/, neither of which is mounted here.
+      - ./server:/app/server:ro
+      - ./config:/app/config:ro
+      - ./main.py:/app/main.py:ro
       # Optional: mount .env live
       # - ./.env:/app/.env:ro
     depends_on:
       # Intentionally NOT service_healthy — the app must boot and serve the UI
-      # even if the LLM node never comes up. The entrypoint waits politely.
+      # even if the LLM node or the database never come up. The entrypoint
+      # waits politely for Ollama; preflight reports a missing DB and carries on.
       - ollama
+      - mssql
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/health"]
+      # Deliberately hits "/" (the SPA shell), NOT /api/health. /api/health
+      # opens a real DB connection, so probing it every 30s would spam a login
+      # timeout and mark the container unhealthy whenever SQL Server is down —
+      # even though the UI is serving fine. Liveness != dependency health.
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/"]
       interval: 30s
       timeout: 10s
       retries: 10
       start_period: 60s
 
-  # 🗄️ Optional: Local SQL Server for testing — AdventureWorksDW2019
-  # Uncomment this whole block if you want a local SQL Server inside Docker
-  # Then restore .bak manually via sqlcmd or SSMS
-  # mssql:
-  #   image: mcr.microsoft.com/mssql/server:2022-latest
-  #   container_name: arasaka-mssql
-  #   environment:
-  #     ACCEPT_EULA: "Y"
-  #     SA_PASSWORD: "YourStrong!Passw0rd123"
-  #     MSSQL_PID: "Developer"
-  #   ports:
-  #     - "1433:1433"
-  #   volumes:
-  #     - mssql_data:/var/opt/mssql
-  #     - ./backups:/backups  # place AdventureWorksDW2019.bak here
-  #   restart: unless-stopped
-  #   healthcheck:
-  #     test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$${SA_PASSWORD}" -Q "SELECT 1" -C || exit 1
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 10
+  # 🗄️ Local SQL Server — AdventureWorksDW2019 demo target
+  # Comment this block out (and the mssql_data volume) if you point the app at
+  # an external SQL Server instead. See README → Getting to database: true.
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: arasaka-mssql
+    environment:
+      ACCEPT_EULA: "Y"
+      # MSSQL_SA_PASSWORD — SA_PASSWORD is deprecated. Must satisfy the default
+      # password policy: 8+ chars, 3 of {upper, lower, digit, symbol}, or the
+      # container starts and immediately exits.
+      MSSQL_SA_PASSWORD: "YourStrong!Passw0rd123"
+      MSSQL_PID: "Developer"
+    ports:
+      - "1433:1433"
+    volumes:
+      - mssql_data:/var/opt/mssql
+      - ./backups:/backups          # put AdventureWorksDW2019.bak in ./backups
+    restart: unless-stopped
+    healthcheck:
+      # sqlcmd lives in mssql-tools18 since SQL Server 2022 CU14 (the old
+      # /opt/mssql-tools/bin path no longer exists). -C trusts the container's
+      # self-signed cert, which Driver 18 otherwise rejects.
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' -C -b || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
 
 volumes:
   ollama_data:
     name: arasaka_ollama_data
-  # mssql_data:
-  #   name: arasaka_mssql_data
+  mssql_data:
+    name: arasaka_mssql_data

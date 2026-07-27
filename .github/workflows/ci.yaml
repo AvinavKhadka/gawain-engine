@@ -197,8 +197,18 @@ jobs:
           curl -fsS -o /dev/null -w 'HTTP %{http_code}\n' http://localhost:8000/
 
           # DB and Ollama are absent here, so both flags must be false — this
-          # asserts the app degrades gracefully instead of crashing.
-          python3 -c "import json;d=json.load(open('/tmp/health.json'));assert set(d)=={'ollama','database'},d;print('✅ health shape OK:',d)"
+          # asserts the app degrades gracefully instead of crashing. The
+          # optional 'database_error' key carries the reason the DB is down;
+          # assert on required keys rather than an exact set, so adding a
+          # diagnostic field does not break the contract.
+          python3 - <<'PY'
+          import json
+          d = json.load(open('/tmp/health.json'))
+          assert {'ollama', 'database'} <= set(d), d
+          assert d['ollama'] is False and d['database'] is False, d
+          assert 'database_error' in d, "expected the DB failure reason to be surfaced"
+          print('✅ health shape OK:', d)
+          PY
 
           echo "--- ODBC drivers in image"
           docker exec gawain-smoke odbcinst -q -d

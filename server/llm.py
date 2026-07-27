@@ -153,13 +153,31 @@ def fix_sql(bad_sql: str, error_msg: str, schema: str) -> str:
 
 
 def extract_sql(llm_response: str) -> str | None:
-    match = re.search(r"```sql\s*(.*?)```", llm_response, re.DOTALL | re.IGNORECASE)
+    """Pull the SQL out of an LLM response and normalise it to valid T-SQL.
+
+    Sanitising here (rather than only at execution time) means the corrected
+    statement is what gets shown in the UI, saved to history, and fed back to
+    fix_sql — so the user never sees SQL that differs from what actually ran,
+    and a retry never re-inherits a dialect error we already know how to fix.
+    """
+    from server.database import preprocess_sql  # local import avoids a cycle
+
+    match = re.search(r"```(?:sql|tsql|mssql)?\s*(.*?)```",
+                      llm_response, re.DOTALL | re.IGNORECASE)
     if match:
-        return match.group(1).strip()
-    stripped = llm_response.strip()
-    if stripped.upper().startswith(("SELECT", "WITH")):
-        return stripped
-    return None
+        candidate = match.group(1).strip()
+    else:
+        stripped = llm_response.strip()
+        # Some models preface the statement with prose; take from the first
+        # SELECT/WITH onwards rather than giving up entirely.
+        m = re.search(r"\b(SELECT|WITH)\b", stripped, re.IGNORECASE)
+        candidate = stripped[m.start():].strip() if m else None
+
+    if not candidate:
+        return None
+
+    cleaned = preprocess_sql(candidate)
+    return cleaned or None
 
 
 def plan_query(question: str, schema: str) -> list[dict]:
