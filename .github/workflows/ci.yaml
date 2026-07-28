@@ -123,6 +123,16 @@ jobs:
       - name: 🔍 Compile check
         run: python -m compileall -q main.py server/ config/
 
+      - name: 🧪 Unit tests
+        # Discovery is scoped to tests/ so it cannot pick up test_pipeline.py,
+        # which is a manual end-to-end script: it queries a live SQL Server and
+        # calls Ollama at import time, so it can never pass on a bare runner.
+        # -b buffers stdout so the structured-logging tests don't flood the log.
+        env:
+          DB_SERVER: localhost
+          DB_DATABASE: none
+        run: python -m unittest discover -s tests -t . -p "test_*.py" -v -b
+
       - name: 🚦 Import app & assert routes
         # Proves the FastAPI app object actually constructs without a database.
         env:
