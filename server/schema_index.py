@@ -46,8 +46,13 @@ log = get_logger(__name__)
 __all__ = ["SchemaIndex", "parse_schema_text"]
 
 #: Tokens that carry no distinguishing meaning in warehouse column names.
-_NOISE = ("english", "calendar", "number", "numberof", "of", "name", "full",
-          "alternate", "the", "total")
+#:
+#: "number" and "name" are deliberately NOT here. Stripping them collapses
+#: MonthNumberOfYear and EnglishMonthName to the same key, so `dd.MonthNumber`
+#: could resolve to the month *name* — a silently wrong answer that still runs.
+#: A number and a name are different kinds of thing; that distinction has to
+#: survive normalisation.
+_NOISE = ("english", "calendar", "full", "alternate", "the", "total")
 
 _TABLE_RE = re.compile(r"^Table:\s*(\S+)", re.IGNORECASE)
 _COL_RE = re.compile(r"^\s*-\s*(\w+)\s*\(")

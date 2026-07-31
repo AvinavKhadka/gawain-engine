@@ -182,9 +182,7 @@ npm run dev
 
 ### 5️⃣ Run
 
-```bat
-start.bat   # Windows one-click
-# or
+```bash
 python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 # → http://localhost:8000
 ```
@@ -204,7 +202,7 @@ Full-stack: **FastAPI + React (Arasaka theme) + Ollama** — no DB needed at bui
 ### Quick Start
 
 ```bash
-cp .env.docker.example .env
+cp .env.example .env
 # Edit .env: DB_SERVER=host.docker.internal\SQLEXPRESS, DB_USER=sa, DB_PASSWORD=...
 
 docker compose up --build -d
@@ -520,11 +518,9 @@ gawain-engine/
 ├── docker-compose.yml       # 🐳 app + ollama + optional mssql
 ├── docker-entrypoint.sh     # 🐳 Wait for Ollama + pull model
 ├── .dockerignore
-├── .env.docker.example
 │
 ├── main.py                  # 🚪 FastAPI entry — serves static + API
 ├── requirements.txt
-├── start.bat                # ⚡ Windows launcher
 ├── .env / .env.example
 │
 ├── config/
@@ -562,11 +558,6 @@ gawain-engine/
 ├── static/                  # 📦 Build output (gitignored)
 ├── storage/                 # 💾 history.db + analytics.duckdb (gitignored)
 │
-└── train/
-    ├── README.md            # 📚 Training guide — アラサカ学習
-    ├── Modelfile
-    ├── prepare_data.py
-    └── finetune scripts
 ```
 
 ---
@@ -624,7 +615,6 @@ Quick checks:
 ### 🐌 Wrong / slow SQL
 - Slow: `ollama pull llama3.2:3b` or enable GPU
 - Wrong: narrows context `DB_TABLE_FILTER`, or edit SQL in UI `EDIT // RE-EXECUTE` → `◈ TRAIN_CORE` to save as training pair
-- See `train/README.md`
 
 ### 🎨 Old Barclays blue instead of Arasaka red
 ```bash
@@ -650,7 +640,7 @@ Dev bypass: `npm run dev` → `:5173`
 `packages.microsoft.com/debian/13` (trixie) is signed by a **different key** than `/debian/12` — `microsoft.asc` alone is not enough. The Dockerfile imports both `microsoft.asc` and `microsoft-2025.asc` for this reason. Don't "simplify" it back to one key.
 
 ### 🐳 `env file /path/.env not found`
-`.env` is gitignored, so fresh clones and CI runners don't have one. `docker-compose.yml` marks it `required: false`, which needs **Compose v2.24+** — check with `docker compose version`. Either way: `cp .env.docker.example .env`.
+`.env` is gitignored, so fresh clones and CI runners don't have one. `docker-compose.yml` marks it `required: false`, which needs **Compose v2.24+** — check with `docker compose version`. Either way: `cp .env.example .env`.
 
 ### 🐳 `exec /app/docker-entrypoint.sh: no such file or directory`
 Windows CRLF line endings. The repo's `.gitattributes` normalises to LF — if you hand-edited the file, save it with **LF**.

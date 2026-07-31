@@ -10,6 +10,7 @@ import pandas as pd
 from tabulate import tabulate
 
 from config.observability import get_logger
+from server.sql_dialect import preprocess_sql, register_repair_hook
 from config.settings import (
     get_connection_string, DB_TABLE_FILTER, DB_DATABASE,
     CURRENCY_HINTS, PERCENT_HINTS,
@@ -17,34 +18,6 @@ from config.settings import (
 )
 
 log = get_logger(__name__)
-
-# ── Pre-built trend queries ───────────────────────────────────────────────────
-
-TREND_SQL_5DAYS = """
-SELECT TOP 5
-    CONVERT(varchar(10), dd.FullDateAlternateKey, 23) AS OrderDate,
-    SUM(fis.SalesAmount)                              AS Revenue,
-    COUNT(DISTINCT fis.SalesOrderNumber)              AS Orders,
-    SUM(fis.OrderQuantity)                            AS Units
-FROM dbo.FactInternetSales fis
-JOIN dbo.DimDate dd ON fis.OrderDateKey = dd.DateKey
-GROUP BY dd.FullDateAlternateKey
-ORDER BY dd.FullDateAlternateKey DESC
-"""
-
-TREND_SQL_12MONTHS = """
-SELECT TOP 12
-    LEFT(dd.EnglishMonthName, 3) + ' ' + CAST(dd.CalendarYear AS varchar(4)) AS Period,
-    dd.CalendarYear      AS Year,
-    dd.MonthNumberOfYear AS MonthNum,
-    SUM(fis.SalesAmount)                     AS Revenue,
-    COUNT(DISTINCT fis.SalesOrderNumber)     AS Orders,
-    SUM(fis.OrderQuantity)                   AS Units
-FROM dbo.FactInternetSales fis
-JOIN dbo.DimDate dd ON fis.OrderDateKey = dd.DateKey
-GROUP BY dd.CalendarYear, dd.MonthNumberOfYear, dd.EnglishMonthName
-ORDER BY dd.CalendarYear DESC, dd.MonthNumberOfYear DESC
-"""
 
 
 def get_connection():
@@ -127,7 +100,23 @@ def get_schema_context() -> str:
     fk_rows = fk_cur.fetchall()
     fk_conn.close()
 
-    lines = [f"=== {DB_DATABASE} Schema ===", "", "KEY RELATIONSHIPS:"]
+    lines = [f"=== {DB_DATABASE} Schema ===", ""]
+
+    # The date boundary is a fact about the DATA, not the schema. Without it an
+    # LLM reaches for GETDATE() and silently produces nonsense — ages computed
+    # against today, "last 30 days" filters matching nothing.
+    coverage = _probe_date_coverage(cursor, tables)
+    if coverage:
+        lines += [
+            f"DATA COVERAGE: {coverage}",
+            "  The data ENDS on the later date above. Never use GETDATE(),",
+            "  CURRENT_TIMESTAMP or SYSDATETIME() — they resolve to today and",
+            "  will produce wrong results. Anchor any relative period ('recent',",
+            "  'last N days', age calculations) to the end of the coverage range.",
+            "",
+        ]
+
+    lines += ["KEY RELATIONSHIPS:"]
     for fk_table, fk_col, pk_table, pk_col in fk_rows:
         lines.append(f"  {fk_table}.{fk_col} -> {pk_table}.{pk_col}")
     lines.append("")
@@ -138,6 +127,53 @@ def get_schema_context() -> str:
         lines.append("")
 
     return "\n".join(lines)
+
+
+def _probe_date_coverage(cursor, tables: dict) -> str | None:
+    """Find the real date range in the data by querying it.
+
+    INFORMATION_SCHEMA can say a column is a DATE; it cannot say the data stops
+    in 2014. That boundary is a fact about the *contents*, so it has to be
+    measured rather than declared — which keeps it correct for any database
+    instead of hardcoding one dataset's dates into the prompt.
+
+    Returns None on any failure: a missing hint degrades the prompt slightly,
+    but it must never break schema discovery.
+    """
+    candidates: list[tuple[str, str]] = []
+    for table_name, cols in tables.items():
+        for col_line in cols:
+            m = re.match(
+                r"\s*-\s*(\w+)\s*\((date|datetime|datetime2|smalldatetime)\)",
+                col_line, re.IGNORECASE,
+            )
+            if m:
+                candidates.append((table_name, m.group(1)))
+
+    if not candidates:
+        return None
+
+    # Prefer fact tables: a date dimension lists every calendar date it was
+    # generated with, including years holding no transactions, which would
+    # overstate the true coverage.
+    candidates.sort(key=lambda tc: (0 if "fact" in tc[0].lower() else 1, tc[0]))
+
+    for table_name, col in candidates[:3]:
+        try:
+            cursor.execute(
+                f"SELECT MIN([{col}]), MAX([{col}]) FROM {table_name} "  # noqa: S608
+                f"WHERE [{col}] IS NOT NULL"
+            )
+            row = cursor.fetchone()
+            if row and row[0] and row[1]:
+                lo, hi = row
+                if hasattr(lo, "strftime"):
+                    return f"{lo:%Y-%m-%d} to {hi:%Y-%m-%d}"
+                return f"{lo} to {hi}"
+        except Exception:
+            log.debug("date probe failed for %s.%s", table_name, col, exc_info=True)
+            continue
+    return None
 
 
 def get_foreign_keys() -> list[dict]:
@@ -216,129 +252,6 @@ def get_dimension_attributes(table: str) -> list[str]:
     return keep
 
 
-# ── SQL pre-processing & validation ───────────────────────────────────────────
-
-# Hallucinated → real column mappings (alias-agnostic, word-boundary safe)
-_COL_FIXES: list[tuple[str, str]] = [
-    (r"\b(\w+)\.ProductName\b",              r"\1.EnglishProductName"),
-    (r"\b(\w+)\.CategoryName\b",             r"\1.EnglishProductCategoryName"),
-    (r"\b(\w+)\.SubcategoryName\b",          r"\1.EnglishProductSubcategoryName"),
-    (r"\b(\w+)\.CountryName\b",              r"\1.EnglishCountryRegionName"),
-    (r"\b(\w+)\.RegionName\b",               r"\1.SalesTerritoryRegion"),
-    (r"\b(\w+)\.CustomerSegmentName\b",        r"\1.EnglishOccupation"),
-    (r"\b(\w+)\.EnglishCustomerSegmentName\b", r"\1.EnglishOccupation"),
-    (r"\b(\w+)\.CustomerType\b",               r"\1.EnglishOccupation"),
-    (r"\b(\w+)\.Segment\b",                    r"\1.EnglishOccupation"),
-    (r"\b(\w+)\.TerritoryName\b",              r"\1.SalesTerritoryRegion"),
-    # DimDate month/day names are prefixed "English…" in AdventureWorksDW.
-    (r"\b(\w+)\.CalendarMonthName\b",          r"\1.EnglishMonthName"),
-    (r"\b(\w+)\.MonthName\b",                  r"\1.EnglishMonthName"),
-    (r"\b(\w+)\.CalendarDayName\b",            r"\1.EnglishDayNameOfWeek"),
-    (r"\b(\w+)\.DayName\b",                    r"\1.EnglishDayNameOfWeek"),
-    (r"\b(\w+)\.MonthNumber\b(?!OfYear)",      r"\1.MonthNumberOfYear"),
-    # DimDate day/week ordinals are "…NumberOf…", never "Calendar…".
-    (r"\b(\w+)\.CalendarDayOfWeek\b",          r"\1.DayNumberOfWeek"),
-    (r"\b(\w+)\.DayOfWeek\b",                  r"\1.DayNumberOfWeek"),
-    (r"\b(\w+)\.CalendarDayOfMonth\b",         r"\1.DayNumberOfMonth"),
-    (r"\b(\w+)\.DayOfMonth\b",                 r"\1.DayNumberOfMonth"),
-    (r"\b(\w+)\.CalendarDayOfYear\b",          r"\1.DayNumberOfYear"),
-    (r"\b(\w+)\.DayOfYear\b",                  r"\1.DayNumberOfYear"),
-    (r"\b(\w+)\.CalendarWeekOfYear\b",         r"\1.WeekNumberOfYear"),
-    (r"\b(\w+)\.WeekOfYear\b",                 r"\1.WeekNumberOfYear"),
-    (r"\b(\w+)\.WeekNumber\b(?!OfYear)",       r"\1.WeekNumberOfYear"),
-    # The real calendar date lives in FullDateAlternateKey; DateKey is an
-    # INTEGER YYYYMMDD surrogate and renders as 20131225 in a chart axis.
-    (r"\b(\w+)\.FullDate\b(?!AlternateKey)",   r"\1.FullDateAlternateKey"),
-    (r"\b(\w+)\.CalendarDate\b",               r"\1.FullDateAlternateKey"),
-    (r"\b(\w+)\.OrderDate\b(?!Key)",           r"\1.FullDateAlternateKey"),
-]
-
-
-def _strip_trailing_limit(sql: str) -> tuple[str, int | None]:
-    """Remove a trailing LIMIT/OFFSET clause, returning (sql, row_limit).
-
-    LLMs trained mostly on MySQL/Postgres emit `LIMIT n` no matter how firmly
-    the prompt says T-SQL. Rather than burning LLM round-trips re-asking, we
-    strip it deterministically and hand the row count back so the caller can
-    re-express it as `SELECT TOP n`.
-
-    Handles:  LIMIT 20  |  LIMIT 20 OFFSET 5  |  LIMIT 5, 20 (MySQL)  |  FETCH NEXT
-    """
-    # MySQL two-arg form: LIMIT <offset>, <count>  -> the count is the row cap
-    m = re.search(r"\bLIMIT\s+\d+\s*,\s*(\d+)\s*;?\s*$", sql, re.IGNORECASE)
-    if m:
-        return re.sub(r"\bLIMIT\s+\d+\s*,\s*\d+\s*;?\s*$", "", sql,
-                      flags=re.IGNORECASE).rstrip(), int(m.group(1))
-
-    # Standard: LIMIT <count> [OFFSET <n>]
-    m = re.search(r"\bLIMIT\s+(\d+)(?:\s+OFFSET\s+\d+)?\s*;?\s*$", sql, re.IGNORECASE)
-    if m:
-        return re.sub(r"\bLIMIT\s+\d+(?:\s+OFFSET\s+\d+)?\s*;?\s*$", "", sql,
-                      flags=re.IGNORECASE).rstrip(), int(m.group(1))
-
-    # Postgres/ANSI OFFSET..FETCH is valid T-SQL only with ORDER BY; if the
-    # model emitted a bare FETCH FIRST without OFFSET, convert it too.
-    m = re.search(r"\bFETCH\s+(?:FIRST|NEXT)\s+(\d+)\s+ROWS?\s+ONLY\s*;?\s*$",
-                  sql, re.IGNORECASE)
-    if m and not re.search(r"\bOFFSET\b", sql, re.IGNORECASE):
-        return re.sub(r"\bFETCH\s+(?:FIRST|NEXT)\s+\d+\s+ROWS?\s+ONLY\s*;?\s*$", "",
-                      sql, flags=re.IGNORECASE).rstrip(), int(m.group(1))
-
-    return sql, None
-
-
-def _result_select_pos(sql: str) -> int:
-    """Index of the SELECT that produces the final result set.
-
-    For a plain query that is the first SELECT. For a `WITH cte AS (...) SELECT`
-    it is the SELECT *after* the CTE definitions — putting TOP inside the CTE
-    would silently truncate the wrong result set, which is a data-correctness
-    bug rather than a syntax error, so it must be handled explicitly.
-    """
-    if not re.match(r"\s*WITH\b", sql, re.IGNORECASE):
-        m = re.search(r"\bSELECT\b", sql, re.IGNORECASE)
-        return m.start() if m else -1
-
-    # Walk the string tracking parenthesis depth; the first SELECT at depth 0
-    # after the WITH block is the result-producing one.
-    depth = 0
-    for m in re.finditer(r"[()]|\bSELECT\b", sql, re.IGNORECASE):
-        tok = m.group()
-        if tok == "(":
-            depth += 1
-        elif tok == ")":
-            depth -= 1
-        elif depth == 0 and m.start() > 0:
-            return m.start()
-    return -1
-
-
-def _apply_top(sql: str, n: int) -> str:
-    """Inject `TOP n` into the result-producing SELECT, if not already capped.
-
-    A TOP already present on that SELECT is respected — the model's explicit
-    intent wins over a stripped LIMIT.
-    """
-    pos = _result_select_pos(sql)
-    if pos < 0:
-        return sql
-
-    head, tail = sql[:pos], sql[pos:]
-
-    # Already capped? leave it alone.
-    if re.match(r"\bSELECT\s+(?:DISTINCT\s+)?TOP\b", tail, re.IGNORECASE):
-        return sql
-
-    # T-SQL requires SELECT DISTINCT TOP n, not SELECT TOP n DISTINCT.
-    if re.match(r"\bSELECT\s+DISTINCT\b", tail, re.IGNORECASE):
-        tail = re.sub(r"\bSELECT\s+DISTINCT\b", f"SELECT DISTINCT TOP {n}", tail,
-                      count=1, flags=re.IGNORECASE)
-    else:
-        tail = re.sub(r"\bSELECT\b", f"SELECT TOP {n}", tail,
-                      count=1, flags=re.IGNORECASE)
-    return head + tail
-
-
 #: Process-wide schema cache. Owned here (rather than in routes.py) so the SQL
 #: sanitiser can consult the real schema without a circular import or an extra
 #: database round-trip. routes.get_schema() delegates to this.
@@ -391,74 +304,25 @@ def repair_columns(sql: str) -> str:
     return fixed
 
 
-def preprocess_sql(sql: str) -> str:
-    """Normalise LLM output into executable T-SQL.
+def _learned_repair(sql: str) -> str:
+    """Column mappings observed from repairs that actually worked here."""
+    from server.failures import apply_learned_fixes
+    fixed, _ = apply_learned_fixes(sql)
+    return fixed
 
-    Two layers, deliberately:
 
-    1. **Dialect + known-ambiguous names** (below) — deterministic rules for
-       things a schema lookup cannot decide, e.g. `CalendarDayOfWeek`, which
-       matches both `DayNumberOfWeek` and `EnglishDayNameOfWeek` equally well.
-    2. **Schema-aware resolution** (`SchemaIndex`) — every remaining
-       `alias.Column` is checked against the columns that actually exist in
-       the connected database. This is what generalises: it repairs invented
-       names nobody has hit yet, and it works against any schema, not just
-       AdventureWorksDW.
+def install_repair_hooks() -> None:
+    """Register this module's repair passes with the dialect sanitiser.
 
-    Both are far cheaper than an LLM fix-up round-trip, which costs a full
-    generation and frequently reproduces the same mistake.
+    Called at import, and exposed so tests can reinstate the hooks after
+    clearing them — re-importing would not, since the module is cached.
+    Order matters: a mapping confirmed empirically beats a similarity guess.
     """
-    if not sql:
-        return sql
+    register_repair_hook(_learned_repair)
+    register_repair_hook(repair_columns)
 
-    sql = sql.strip()
 
-    # Strip markdown fences / stray backticks the extractor may have missed.
-    sql = re.sub(r"^```(?:sql|tsql|mssql)?\s*", "", sql, flags=re.IGNORECASE)
-    sql = re.sub(r"```\s*$", "", sql).strip()
-    sql = sql.replace("`", "")          # MySQL identifier quoting is invalid in T-SQL
-
-    sql = sql.rstrip(";").rstrip()
-
-    # ── Dialect: LIMIT/OFFSET -> TOP n ────────────────────────────────────────
-    sql, row_limit = _strip_trailing_limit(sql)
-    if row_limit is not None:
-        sql = _apply_top(sql, row_limit)
-
-    # ── TOP N mistakenly placed at the end of the query ───────────────────────
-    m = re.search(r"\s+TOP\s+(\d+)\s*;?\s*$", sql, re.IGNORECASE)
-    if m:
-        n = m.group(1)
-        sql = re.sub(r"\s+TOP\s+\d+\s*;?\s*$", "", sql, flags=re.IGNORECASE)
-        sql = _apply_top(sql, int(n))
-
-    # ── Other dialect leakage ─────────────────────────────────────────────────
-    # Postgres cast  x::int  ->  CAST(x AS int)
-    sql = re.sub(r"\b(\w+(?:\.\w+)?)::(\w+)\b", r"CAST(\1 AS \2)", sql)
-    # MySQL/Postgres functions with no T-SQL equivalent under the same name
-    sql = re.sub(r"\bIFNULL\s*\(", "ISNULL(", sql, flags=re.IGNORECASE)
-    sql = re.sub(r"\bNOW\s*\(\s*\)", "GETDATE()", sql, flags=re.IGNORECASE)
-    sql = re.sub(r"\bCURRENT_DATE\b", "CAST(GETDATE() AS date)", sql, flags=re.IGNORECASE)
-
-    # ── Fix aggregate alias syntax ────────────────────────────────────────────
-    sql = re.sub(
-        r"\w+\([^)]*\)\s*=\s*((?:SUM|AVG|MIN|MAX|COUNT)\([^)]+\))\s+AS\s+(\w+)",
-        r"\1 AS \2", sql, flags=re.IGNORECASE,
-    )
-
-    # ── Auto-correct commonly hallucinated column names ───────────────────────
-    # These handle cases a schema lookup cannot resolve unambiguously.
-    for pattern, replacement in _COL_FIXES:
-        sql = re.sub(pattern, replacement, sql, flags=re.IGNORECASE)
-
-    # ── Schema-aware repair of anything still invalid ─────────────────────────
-    # Best-effort: never let a repair failure break query execution.
-    try:
-        sql = repair_columns(sql)
-    except Exception:
-        log.debug("schema-aware column repair skipped", exc_info=True)
-
-    return sql.strip()
+install_repair_hooks()
 
 
 def validate_sql(sql: str) -> str | None:

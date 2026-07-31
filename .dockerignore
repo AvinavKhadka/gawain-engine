@@ -39,11 +39,6 @@ storage/*.sqlite
 .DS_Store
 Thumbs.db
 
-# Train large artefacts
-train/models/
-train/data/
-train/__pycache__
-
 # Logs
 *.log
 logs/
@@ -57,3 +52,11 @@ logs/
 # Database backups — mounted as a volume, must never enter the image
 backups/
 *.bak
+
+# Dev-only — never needed inside the image
+tests/
+docs/
+evaluate.py
+.flake8
+README.md
+.github/

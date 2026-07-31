@@ -13,6 +13,11 @@ from server.database import (
     result_brief,
 )
 from server.schema_retrieval import get_relevant_schema
+from server.extract import load_meta, extract_to_duckdb
+from server.drivers import run as run_driver
+from server.failures import (record_failure, record_repair, failure_stats,
+                             build_lessons, learned_column_fixes, load_repairs)
+from server.answerability import check_answerable, Unanswerable
 from config.observability import get_logger
 import server.history as history_db
 from server.llm import (
@@ -21,7 +26,8 @@ from server.llm import (
     is_deep_question, needs_planning, plan_query,
     is_driver_question, pick_driver_method,
 )
-from config.settings import SESSION_MAX_TURNS, CHART_COLORS
+from config.settings import (SESSION_MAX_TURNS, CHART_COLORS, OLLAMA_MODEL,
+                             HISTORY_DB_PATH)
 
 router = APIRouter()
 log = get_logger(__name__)
@@ -169,19 +175,27 @@ def refresh_schema():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/api/failures")
+def failures_summary():
+    """What is failing, what was learned from it, and what is auto-applied."""
+    stats = failure_stats()
+    stats["active_lessons"] = build_lessons()
+    stats["learned_column_fixes"] = learned_column_fixes()
+    stats["repairs_recorded"] = len(load_repairs())
+    return stats
+
+
 # ── Driver-analysis endpoints ─────────────────────────────────────────────────
 
 @router.get("/api/drivers/status")
 def drivers_status():
     """Return metadata of the current analytics extract (or null if not built)."""
-    from server.extract import load_meta
     return {"meta": load_meta()}
 
 
 @router.post("/api/drivers/rebuild")
 def drivers_rebuild(limit: int | None = None):
     """Re-extract the star schema from SQL Server into the local DuckDB store."""
-    from server.extract import extract_to_duckdb
     try:
         meta = extract_to_duckdb(limit=limit, verbose=False)
         return {"status": "rebuilt", "meta": meta}
@@ -198,8 +212,6 @@ class DriverRequest(BaseModel):
 @router.post("/api/drivers/run")
 def drivers_run(req: DriverRequest):
     """Run a single driver analysis and return the structured result (no LLM)."""
-    from server.drivers import run as run_driver
-    from server.extract import load_meta
 
     meta = load_meta()
     if meta is None:
@@ -238,8 +250,12 @@ def delete_history(item_id: int):
 
 # ── Training data ─────────────────────────────────────────────────────────────
 
+# Lives in storage/ alongside failures.jsonl and repairs.jsonl — the only
+# directory bind-mounted in docker-compose, so records survive a container
+# recreate. (It previously wrote to train/, which was not mounted and so was
+# silently discarded on every rebuild.)
 _TRAIN_DATA = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)), "train", "data", "examples.jsonl"
+    os.path.dirname(HISTORY_DB_PATH), "training_pairs.jsonl"
 )
 
 
@@ -358,8 +374,6 @@ def chat(req: ChatRequest):
         # text->SQL. Route it to the DuckDB driver engine when the extract
         # exists; otherwise fall through to the normal SQL flow.
         if is_driver_question(req.question):
-            from server.drivers import run as run_driver
-            from server.extract import load_meta
             meta = load_meta()
             if meta is None:
                 yield emit("step", "Driver store not built — answering with SQL "
@@ -413,6 +427,15 @@ def chat(req: ChatRequest):
             yield emit("done")
             return
 
+        # Refuse questions the schema provably cannot answer, rather than
+        # letting the LLM produce confident SQL for a different question.
+        try:
+            check_answerable(req.question, full_schema)
+        except Unanswerable as e:
+            yield emit("error", e.message)
+            yield emit("done")
+            return
+
         schema = get_relevant_schema(full_schema, req.question)
 
         # ── Generate SQL ───────────────────────────────────────────────────
@@ -435,6 +458,7 @@ def chat(req: ChatRequest):
         yield emit("step", "Validating query...")
         val_error = validate_sql(sql)
         if val_error:
+            broken_sql, first_error = sql, val_error
             for attempt in range(2):
                 # Second attempt escalates to full schema so LLM sees all columns
                 fix_schema = full_schema if attempt == 1 else schema
@@ -448,8 +472,15 @@ def chat(req: ChatRequest):
                     yield emit("sql", sql)
                     val_error = validate_sql(sql)
                 if not val_error:
+                    # Repair worked — capture what actually fixed it.
+                    record_repair(req.question, broken_sql, sql, first_error,
+                                  stage="validation", attempts=attempt + 1,
+                                  model=OLLAMA_MODEL)
                     break
             if val_error:
+                record_failure(req.question, sql, val_error,
+                               stage="validation", attempts=2,
+                               model=OLLAMA_MODEL)
                 yield emit("error", f"SQL validation error: {val_error}\n\n```sql\n{sql}\n```")
                 yield emit("done")
                 return
@@ -459,6 +490,7 @@ def chat(req: ChatRequest):
         df, error = execute_query(sql)
 
         if error:
+            broken_sql, first_error = sql, error
             for attempt in range(2):
                 fix_schema = full_schema if attempt == 1 else schema
                 yield emit("step", f"Fixing SQL error (attempt {attempt + 1})...")
@@ -471,9 +503,15 @@ def chat(req: ChatRequest):
                     sql = fixed_sql
                     df, error = execute_query(sql)
                 if not error:
+                    record_repair(req.question, broken_sql, sql, first_error,
+                                  stage="execution", attempts=attempt + 1,
+                                  model=OLLAMA_MODEL)
                     break
 
         if error:
+            record_failure(req.question, sql, error,
+                           stage="execution", attempts=2,
+                           model=OLLAMA_MODEL)
             yield emit("error", f"SQL error: {error}\n\n```sql\n{sql}\n```")
             yield emit("done")
             return

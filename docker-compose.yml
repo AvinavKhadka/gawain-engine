@@ -75,9 +75,9 @@ services:
       # Comment these OUT to test the real production image — that is what CI
       # builds and what ships to GHCR.
       #
-      # :ro is safe — nothing writes into server/ or config/ at runtime. The
-      # DuckDB meta file lands in storage/, and POST /api/train/save writes to
-      # train/data/, neither of which is mounted here.
+      # :ro is safe — nothing writes into server/ or config/ at runtime.
+      # All runtime state (history, DuckDB extract, failure log, training
+      # pairs) is written under storage/, which IS mounted read-write.
       - ./server:/app/server:ro
       - ./config:/app/config:ro
       - ./main.py:/app/main.py:ro

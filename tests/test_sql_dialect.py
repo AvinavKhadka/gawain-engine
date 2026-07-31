@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import unittest
 
-from server.database import preprocess_sql, _strip_trailing_limit, _apply_top
+from server.sql_dialect import preprocess_sql, _strip_trailing_limit, _apply_top
 
 
 class TestLimitStripping(unittest.TestCase):
@@ -131,49 +131,6 @@ LIMIT 20;"""
         out = preprocess_sql("SELECT a FROM t ORDER BY a DESC TOP 10")
         self.assertTrue(out.upper().startswith("SELECT TOP 10"))
         self.assertEqual(out.upper().count("TOP"), 1)
-
-    def test_hallucinated_columns_corrected(self):
-        out = preprocess_sql("SELECT dp.ProductName, dpc.CategoryName FROM t")
-        self.assertIn("EnglishProductName", out)
-        self.assertIn("EnglishProductCategoryName", out)
-
-    def test_dimdate_name_columns_corrected(self):
-        """DimDate month/day names are English-prefixed in AdventureWorksDW."""
-        out = preprocess_sql(
-            "SELECT dd.CalendarMonthName, dd.MonthName, dd.CalendarDayName FROM t")
-        self.assertNotIn("CalendarMonthName", out)
-        self.assertNotIn("CalendarDayName", out)
-        self.assertEqual(out.count("EnglishMonthName"), 2)
-        self.assertIn("EnglishDayNameOfWeek", out)
-
-    def test_dimdate_ordinal_columns_corrected(self):
-        """Day/week ordinals are '…NumberOf…', never 'Calendar…'."""
-        out = preprocess_sql(
-            "SELECT dd.CalendarDayOfWeek, dd.DayOfMonth, dd.WeekOfYear FROM t")
-        self.assertIn("dd.DayNumberOfWeek", out)
-        self.assertIn("dd.DayNumberOfMonth", out)
-        self.assertIn("dd.WeekNumberOfYear", out)
-        self.assertNotIn("CalendarDayOfWeek", out)
-
-    def test_date_column_corrected(self):
-        out = preprocess_sql("SELECT dd.FullDate, dd.CalendarDate FROM t")
-        self.assertEqual(out.count("FullDateAlternateKey"), 2)
-
-    def test_date_columns_not_double_corrected(self):
-        """The already-correct names must survive untouched."""
-        for good in ("SELECT dd.FullDateAlternateKey FROM t",
-                     "SELECT fis.OrderDateKey FROM t",
-                     "SELECT dd.DayNumberOfWeek FROM t",
-                     "SELECT dd.WeekNumberOfYear FROM t"):
-            with self.subTest(sql=good):
-                self.assertEqual(preprocess_sql(good), good)
-
-    def test_monthnumberofyear_not_double_corrected(self):
-        """MonthNumber -> MonthNumberOfYear, but the correct name is left alone."""
-        self.assertIn("dd.MonthNumberOfYear",
-                      preprocess_sql("SELECT dd.MonthNumber FROM t"))
-        out = preprocess_sql("SELECT dd.MonthNumberOfYear FROM t")
-        self.assertEqual(out.count("OfYear"), 1)
 
     def test_valid_tsql_passes_through_unchanged(self):
         """No false positives on already-correct SQL."""
@@ -352,3 +309,64 @@ class TestSchemaAwareRepair(unittest.TestCase):
             self.assertEqual(db.repair_columns(sql), sql)
         finally:
             db._schema_cache = saved
+
+
+class TestGenericColumnResolution(unittest.TestCase):
+    """_COL_FIXES (27 hardcoded regexes) was deleted. These prove the generic
+    schema resolver covers the same ground without naming any column."""
+
+    SCHEMA = """=== S ===
+
+Table: dbo.DimProduct
+  - EnglishProductName (nvarchar)
+
+Table: dbo.DimDate
+  - EnglishMonthName (nvarchar)
+  - MonthNumberOfYear (tinyint)
+  - DayNumberOfWeek (tinyint)
+  - EnglishDayNameOfWeek (nvarchar)
+  - FullDateAlternateKey (date)
+"""
+
+    def setUp(self):
+        import server.database as db
+        self.db = db
+        self._saved = db._schema_cache
+        db._schema_cache = self.SCHEMA
+        db._schema_index = None
+
+    def tearDown(self):
+        self.db._schema_cache = self._saved
+        self.db._schema_index = None
+
+    def _fix(self, sql):
+        return self.db.preprocess_sql(sql)
+
+    def test_english_prefix(self):
+        self.assertIn("dp.EnglishProductName",
+                      self._fix("SELECT dp.ProductName FROM dbo.DimProduct dp"))
+
+    def test_calendar_prefix(self):
+        self.assertIn("dd.EnglishMonthName",
+                      self._fix("SELECT dd.CalendarMonthName FROM dbo.DimDate dd"))
+
+    def test_number_and_name_stay_distinct(self):
+        """MonthNumber must not resolve to the month NAME.
+
+        Normalisation previously stripped 'number' and 'name', collapsing
+        MonthNumberOfYear and EnglishMonthName to the same key — a wrong
+        answer that runs cleanly.
+        """
+        out = self._fix("SELECT dd.MonthNumber FROM dbo.DimDate dd")
+        self.assertIn("dd.MonthNumberOfYear", out)
+        self.assertNotIn("EnglishMonthName", out)
+
+    def test_date_column(self):
+        self.assertIn("dd.FullDateAlternateKey",
+                      self._fix("SELECT dd.FullDate FROM dbo.DimDate dd"))
+
+    def test_genuinely_ambiguous_left_alone(self):
+        """DayOfWeek matches DayNumberOfWeek and EnglishDayNameOfWeek equally,
+        so it is left for the LLM rather than guessed."""
+        sql = "SELECT dd.CalendarDayOfWeek FROM dbo.DimDate dd"
+        self.assertIn("CalendarDayOfWeek", self._fix(sql))

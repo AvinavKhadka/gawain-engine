@@ -9,15 +9,11 @@ from config.settings import (
     LLM_TEMPERATURE, LLM_TEMPERATURE_ANALYSIS,
     LLM_NUM_PREDICT, LLM_ANALYSIS_TOKENS,
     LLM_TIMEOUT_SQL, LLM_TIMEOUT_STREAM,
-    TREND_KEYWORDS, DEEP_KEYWORDS, PLAN_TRIGGERS,
+    DEEP_KEYWORDS, PLAN_TRIGGERS,
     DRIVER_KEYWORDS, DRIVER_CHANGEPOINT_HINTS, DRIVER_INFLUENCER_HINTS,
 )
 from config.prompts import SYSTEM_PROMPT
-
-
-def is_trend_question(question: str) -> bool:
-    q = question.lower()
-    return any(kw in q for kw in TREND_KEYWORDS)
+from server.sql_dialect import preprocess_sql
 
 
 def is_deep_question(question: str) -> bool:
@@ -94,20 +90,31 @@ def _generate(prompt: str, stream: bool = False, num_predict: int | None = None)
 
 
 def generate_sql(question: str, schema: str, history: list[dict] | None = None) -> str:
+    """Translate a question into T-SQL against the supplied schema.
+
+    The per-request instructions here are deliberately about *correctness*, not
+    *content*. An earlier version mandated a fact table, "at least two
+    dimensions", and a GrossProfit column on every request, which meant
+    unrelated questions all returned the same year+category+profit shape. The
+    schema block and the system prompt now carry everything else.
+    """
+    from server.failures import lessons_block   # local import avoids a cycle
+
     history_ctx = _format_history(history or [])
     prompt = (
         f"{history_ctx}"
         f"{schema}\n\n"
+        f"{lessons_block()}"
         f"Write a T-SQL query to answer:\n{question}\n\n"
         "Requirements:\n"
         "- Return ONLY the SQL in a ```sql ... ``` block.\n"
-        "- Use dbo.FactInternetSales as the primary fact table.\n"
-        "- Join DimDate (alias dd) on OrderDateKey = dd.DateKey.\n"
-        "- For trend/drop questions: break down by at least two dimensions "
-        "(e.g., CalendarYear + Category, or Territory + Quarter).\n"
-        "- Include GrossProfit = SalesAmount - TotalProductCost where relevant.\n"
-        "- ORDER BY the primary metric DESC.\n"
-        "- Use TOP 20 if it could return many rows."
+        "- Use only tables and columns present in the schema above.\n"
+        "- Select exactly the columns needed to answer the question — no "
+        "extra dimensions or measures.\n"
+        "- Derive joins from the KEY RELATIONSHIPS in the schema; follow the "
+        "full chain rather than joining unrelated keys.\n"
+        "- Every non-aggregated SELECT column must appear in GROUP BY.\n"
+        "- Use TOP N only if the result could be large."
     )
     response = _generate(prompt, stream=False)
     response.raise_for_status()
@@ -134,18 +141,11 @@ def fix_sql(bad_sql: str, error_msg: str, schema: str) -> str:
         "Fix it and return ONLY the corrected SQL in a ```sql ... ``` block.\n"
         "Rules:\n"
         "- Use ONLY column names that appear verbatim in the schema above\n"
-        "- CalendarYear/CalendarQuarter/MonthNumberOfYear are in DimDate, not FactInternetSales\n"
+        "- Derive joins from the KEY RELATIONSHIPS in the schema; follow the "
+        "full chain rather than joining unrelated keys\n"
         "- TOP N must appear right after SELECT, never at the end\n"
-        "- GrossProfit must be computed inline: SUM(fis.SalesAmount - fis.TotalProductCost)\n"
-        "- DimProductCategory joins via DimProductSubcategory, never directly from DimProduct\n"
-        "CORRECT column names (replace any wrong ones):\n"
-        "  dp.EnglishProductName             (NOT ProductName)\n"
-        "  dpc.EnglishProductCategoryName    (NOT CategoryName)\n"
-        "  dps.EnglishProductSubcategoryName (NOT SubcategoryName)\n"
-        "  dc.FirstName + dc.LastName        (NOT CustomerName)\n"
-        "  dc.EnglishOccupation              (NOT CustomerSegmentName, NOT EnglishCustomerSegmentName, NOT CustomerType)\n"
-        "  dst.SalesTerritoryCountry         (NOT CountryName)\n"
-        "  dst.SalesTerritoryRegion          (NOT RegionName)"
+        "- If a metric is not stored but can be computed from columns that "
+        "are, compute it inline"
     )
     response = _generate(prompt, stream=False)
     response.raise_for_status()
@@ -160,8 +160,6 @@ def extract_sql(llm_response: str) -> str | None:
     fix_sql — so the user never sees SQL that differs from what actually ran,
     and a retry never re-inherits a dialect error we already know how to fix.
     """
-    from server.database import preprocess_sql  # local import avoids a cycle
-
     match = re.search(r"```(?:sql|tsql|mssql)?\s*(.*?)```",
                       llm_response, re.DOTALL | re.IGNORECASE)
     if match:
