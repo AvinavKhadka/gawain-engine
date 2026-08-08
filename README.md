@@ -10,10 +10,15 @@
 [![CI](https://github.com/AvinavKhadka/gawain-engine/actions/workflows/ci.yaml/badge.svg)](https://github.com/AvinavKhadka/gawain-engine/actions)
 [![License](https://img.shields.io/badge/License-MIT-22c55e?style=flat-square)](./README.md)
 
-![Dark cyberpunk styled hero banner centered on a black background with a red triskele emblem and the project title Gawain Engine. The banner shows the tagline Natural language → T-SQL → KPI cards, tables & charts — all locally, no cloud. Visual tone is futuristic, bold, and tactical with high-contrast red and black colors.]
-
 > **Natural language → T-SQL → KPI cards, tables & charts — all locally, no cloud.**
 > Visual theme: **Arasaka** — red `#ff003c` / black `#05070d` / authentic triskele emblem — アラサカ
+
+**▶ Gawain Engine — live demo**
+
+https://github.com/user-attachments/assets/61184759-1271-40a2-a307-8b64c94e654e
+
+*Question → schema retrieval → T-SQL → validation → execution → KPIs, grid, chart, analysis.
+Running locally on an RTX 4060 with `qwen2.5-coder`. No cloud calls, no data leaving the machine.*
 
 ---
 
